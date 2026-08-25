@@ -4,6 +4,15 @@ Servicio Laravel 13 (API) para enviar notificaciones. **v1 envía solo email**. 
 
 El productor describe *qué* enviar. Este servicio decide *con qué proveedor* (SMTP, Mailgun, Gmail o Log). El contrato **no incluye `provider` ni `from`**.
 
+## Documentación
+
+| Documento | Contenido |
+|-----------|-----------|
+| [Arquitectura](docs/architecture.md) | Entradas HTTP/RabbitMQ, inbox, Messenger, pipeline email |
+| [Diseño](docs/design.md) | Decisiones: contrato, idempotencia, permanentes vs transitorios |
+| [Componentes](docs/components.md) | Mapa de clases por capa |
+| [Testing](docs/testing.md) | Pest, cómo correr tests, mapa de suites |
+
 ## Requisitos
 
 - PHP 8.3+ con `ext-mongodb`, `ext-amqp` y `ext-pcntl`
@@ -25,7 +34,7 @@ php artisan messenger:consume email --time-limit=3600
 
 ## RabbitMQ
 
-Exchange topic: `notificaciones`.
+Exchange topic: `MESSENGER_EXCHANGE` (en `.env.example`: `notificaciones`). Si la variable no está, el fallback de `config/messenger.php` es `notifications`.
 
 | Canal | Routing key | Cola | Worker v1 |
 |-------|-------------|------|-----------|
