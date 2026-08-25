@@ -1,6 +1,6 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel-notifications-microservice",
+    "name": "rafalejandrorh/laravel-notifications-microservice",
     "type": "project",
     "description": "Microservicio de notificaciones (email ahora; push y SMS después) con Laravel, MongoDB y Symfony Messenger.",
     "keywords": ["laravel", "notifications", "email", "mongodb", "rabbitmq"],
