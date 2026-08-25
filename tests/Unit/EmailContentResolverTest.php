@@ -65,6 +65,51 @@ it('rejects unknown template versions', function () {
     ]));
 })->throws(PermanentNotificationException::class);
 
+it('rejects missing recipients', function () {
+    $this->resolver->resolve(emailInboxEvent([
+        'to' => 'user@example.com',
+        'content' => ['subject' => 'Hola', 'text' => 'Cuerpo'],
+    ]));
+})->throws(PermanentNotificationException::class, 'payload.to es obligatorio.');
+
+it('normalizes string addresses', function () {
+    $rendered = $this->resolver->resolve(emailInboxEvent([
+        'to' => ['user@example.com'],
+        'content' => ['subject' => 'Hola', 'text' => 'Cuerpo'],
+    ]));
+
+    expect($rendered->content['subject'])->toBe('Hola');
+    expect($rendered->content['text'])->toBe('Cuerpo');
+});
+
+it('rejects invalid email addresses', function () {
+    $this->resolver->resolve(emailInboxEvent([
+        'to' => [['email' => 'not-an-email']],
+        'content' => ['subject' => 'Hola', 'text' => 'Cuerpo'],
+    ]));
+})->throws(PermanentNotificationException::class, 'Dirección de correo inválida: not-an-email.');
+
+it('rejects an empty template name', function () {
+    $this->resolver->resolve(emailInboxEvent([
+        'to' => [['email' => 'user@example.com']],
+        'template' => ['name' => '', 'params' => ['name' => 'Juan']],
+    ]));
+})->throws(PermanentNotificationException::class, 'template.name es obligatorio.');
+
+it('rejects empty content subjects', function () {
+    $this->resolver->resolve(emailInboxEvent([
+        'to' => [['email' => 'user@example.com']],
+        'content' => ['subject' => '  ', 'text' => 'Cuerpo'],
+    ]));
+})->throws(PermanentNotificationException::class, 'content.subject es obligatorio.');
+
+it('rejects content without html or text', function () {
+    $this->resolver->resolve(emailInboxEvent([
+        'to' => [['email' => 'user@example.com']],
+        'content' => ['subject' => 'Hola'],
+    ]));
+})->throws(PermanentNotificationException::class, 'content debe incluir html o text.');
+
 /**
  * @param  array<string, mixed>  $payload
  */

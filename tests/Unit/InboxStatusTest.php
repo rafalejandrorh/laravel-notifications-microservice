@@ -43,3 +43,27 @@ it('uses the rendered document for email resolved content', function () {
     $event->rendered = ['subject' => 'Hola'];
     expect($event->hasResolvedContent())->toBeFalse();
 });
+
+it('uses title and body for push resolved content', function () {
+    $event = new InboxEvent([
+        'channel' => NotificationChannel::Push,
+        'rendered' => ['title' => 'Alerta', 'body' => 'Detalle'],
+    ]);
+
+    expect($event->hasResolvedContent())->toBeTrue();
+
+    $event->rendered = ['title' => 'Alerta'];
+    expect($event->hasResolvedContent())->toBeFalse();
+});
+
+it('uses text for sms resolved content', function () {
+    $event = new InboxEvent([
+        'channel' => NotificationChannel::Sms,
+        'rendered' => ['text' => 'Hola'],
+    ]);
+
+    expect($event->hasResolvedContent())->toBeTrue();
+
+    $event->rendered = [];
+    expect($event->hasResolvedContent())->toBeFalse();
+});
