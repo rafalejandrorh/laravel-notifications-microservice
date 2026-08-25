@@ -1,60 +1,45 @@
 <?php
 
-namespace Tests\Unit;
-
 use App\Enums\InboxStatus;
 use App\Enums\NotificationChannel;
 use App\Models\InboxEvent;
 use App\Repositories\InboxPersistResult;
-use PHPUnit\Framework\Attributes\Test;
-use Tests\TestCase;
 
-class InboxStatusTest extends TestCase
-{
-    #[Test]
-    public function sent_and_skipped_are_terminal(): void
-    {
-        $this->assertTrue(InboxStatus::Sent->isTerminal());
-        $this->assertTrue(InboxStatus::SkippedDuplicate->isTerminal());
-        $this->assertFalse(InboxStatus::Received->isTerminal());
-        $this->assertFalse(InboxStatus::Processing->isTerminal());
-        $this->assertFalse(InboxStatus::Failed->isTerminal());
-    }
+it('marks sent and skipped as terminal', function () {
+    expect(InboxStatus::Sent->isTerminal())->toBeTrue();
+    expect(InboxStatus::SkippedDuplicate->isTerminal())->toBeTrue();
+    expect(InboxStatus::Received->isTerminal())->toBeFalse();
+    expect(InboxStatus::Processing->isTerminal())->toBeFalse();
+    expect(InboxStatus::Failed->isTerminal())->toBeFalse();
+});
 
-    #[Test]
-    public function received_and_retryable_failed_events_can_be_claimed(): void
-    {
-        $received = new InboxEvent(['status' => InboxStatus::Received]);
-        $failedRetryable = new InboxEvent(['status' => InboxStatus::Failed, 'retryable' => true]);
-        $failedPermanent = new InboxEvent(['status' => InboxStatus::Failed, 'retryable' => false]);
-        $sent = new InboxEvent(['status' => InboxStatus::Sent]);
+it('allows claiming received and retryable failed events', function () {
+    $received = new InboxEvent(['status' => InboxStatus::Received]);
+    $failedRetryable = new InboxEvent(['status' => InboxStatus::Failed, 'retryable' => true]);
+    $failedPermanent = new InboxEvent(['status' => InboxStatus::Failed, 'retryable' => false]);
+    $sent = new InboxEvent(['status' => InboxStatus::Sent]);
 
-        $this->assertTrue($received->canBeClaimed());
-        $this->assertTrue($failedRetryable->canBeClaimed());
-        $this->assertFalse($failedPermanent->canBeClaimed());
-        $this->assertFalse($sent->canBeClaimed());
-    }
+    expect($received->canBeClaimed())->toBeTrue();
+    expect($failedRetryable->canBeClaimed())->toBeTrue();
+    expect($failedPermanent->canBeClaimed())->toBeFalse();
+    expect($sent->canBeClaimed())->toBeFalse();
+});
 
-    #[Test]
-    public function persist_result_reports_duplicates(): void
-    {
-        $event = new InboxEvent(['event_id' => 'abc']);
+it('reports duplicates from persist result', function () {
+    $event = new InboxEvent(['event_id' => 'abc']);
 
-        $this->assertFalse((new InboxPersistResult($event, true))->wasDuplicate());
-        $this->assertTrue((new InboxPersistResult($event, false))->wasDuplicate());
-    }
+    expect((new InboxPersistResult($event, true))->wasDuplicate())->toBeFalse();
+    expect((new InboxPersistResult($event, false))->wasDuplicate())->toBeTrue();
+});
 
-    #[Test]
-    public function email_resolved_content_uses_the_rendered_document(): void
-    {
-        $event = new InboxEvent([
-            'channel' => NotificationChannel::Email,
-            'rendered' => ['subject' => 'Hola', 'html' => '<p>x</p>'],
-        ]);
+it('uses the rendered document for email resolved content', function () {
+    $event = new InboxEvent([
+        'channel' => NotificationChannel::Email,
+        'rendered' => ['subject' => 'Hola', 'html' => '<p>x</p>'],
+    ]);
 
-        $this->assertTrue($event->hasResolvedContent());
+    expect($event->hasResolvedContent())->toBeTrue();
 
-        $event->rendered = ['subject' => 'Hola'];
-        $this->assertFalse($event->hasResolvedContent());
-    }
-}
+    $event->rendered = ['subject' => 'Hola'];
+    expect($event->hasResolvedContent())->toBeFalse();
+});
