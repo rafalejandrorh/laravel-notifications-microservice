@@ -1,58 +1,166 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Microservicio de notificaciones
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Servicio Laravel 13 (API) para enviar notificaciones. **v1 envía solo email**. Push y SMS tienen contrato, colas e inbox listos; no hay workers ni envío real de esos canales.
 
-## About Laravel
+El productor describe *qué* enviar. Este servicio decide *con qué proveedor* (SMTP, Mailgun, Gmail o Log). El contrato **no incluye `provider` ni `from`**.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Requisitos
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+- PHP 8.3+ con `ext-mongodb`, `ext-amqp` y `ext-pcntl`
+- MongoDB y RabbitMQ (`docker compose up -d`)
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+cp .env.example .env
+php artisan key:generate
+docker compose up -d
+php artisan inbox:ensure-indexes
+php artisan messenger:setup
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Worker de email:
 
-## Contributing
+```bash
+php artisan messenger:consume email --time-limit=3600
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## RabbitMQ
 
-## Code of Conduct
+Exchange topic: `notificaciones`.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+| Canal | Routing key | Cola | Worker v1 |
+|-------|-------------|------|-----------|
+| email | `email.send` | `email.send` | sí |
+| push | `push.send` | `push.send` | no (cola declarada) |
+| sms | `sms.send` | `sms.send` | no (cola declarada) |
 
-## Security Vulnerabilities
+DLQ: `email.send.dlq`, `push.send.dlq`, `sms.send.dlq`.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Sobre común:
 
-## License
+```json
+{
+  "event_id": "550e8400-e29b-41d4-a716-446655440000",
+  "event_type": "email.send.requested",
+  "occurred_at": "2026-08-25T13:37:00Z",
+  "idempotency_key": "case-123:welcome",
+  "payload": {}
+}
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+`event_type`: `email.send.requested` | `push.send.requested` | `sms.send.requested`.
+
+El serializer es JSON interoperable (no el formato PHP de Symfony).
+
+### Payload email (v1)
+
+Exactamente uno de `template` o `content`.
+
+**Plantilla**
+
+```json
+{
+  "event_id": "550e8400-e29b-41d4-a716-446655440000",
+  "event_type": "email.send.requested",
+  "occurred_at": "2026-08-25T13:37:00Z",
+  "idempotency_key": "case-123:welcome",
+  "payload": {
+    "to": [{"email": "user@example.com", "name": "Usuario"}],
+    "cc": [],
+    "bcc": [],
+    "reply_to": null,
+    "template": {
+      "name": "welcome",
+      "version": 1,
+      "params": { "name": "Juan" }
+    }
+  }
+}
+```
+
+Sin `version` se usa `latest` del catálogo. La versión resuelta se persiste en el inbox.
+
+**Contenido crudo**
+
+```json
+{
+  "event_id": "550e8400-e29b-41d4-a716-446655440000",
+  "event_type": "email.send.requested",
+  "idempotency_key": "case-123:custom",
+  "payload": {
+    "to": [{"email": "user@example.com", "name": "Usuario"}],
+    "content": {
+      "subject": "Asunto",
+      "html": "<p>Cuerpo</p>",
+      "text": "Cuerpo"
+    }
+  }
+}
+```
+
+### Payload push (contrato; sin envío)
+
+```json
+{
+  "event_id": "...",
+  "event_type": "push.send.requested",
+  "idempotency_key": "case-123:welcome",
+  "payload": {
+    "tokens": ["fcm-or-apns-token"],
+    "template": { "name": "welcome", "version": 1, "params": { "name": "Juan" } }
+  }
+}
+```
+
+o `content`: `{ "title": "...", "body": "...", "data": {} }`.
+
+### Payload SMS (contrato; sin envío)
+
+```json
+{
+  "event_id": "...",
+  "event_type": "sms.send.requested",
+  "idempotency_key": "case-123:otp",
+  "payload": {
+    "to": ["+580000000000"],
+    "template": { "name": "otp", "version": 1, "params": { "code": "1234" } }
+  }
+}
+```
+
+o `content`: `{ "text": "..." }`.
+
+Si un `push.send` / `sms.send` llega al worker de email, se rechaza como error permanente.
+
+## API REST
+
+Auth: header `X-API-Key`.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/api/emails` | Disparo email (mismo contrato). `202`. |
+| GET | `/api/notifications/{eventId}` | Estado (channel, status, provider resuelto). |
+| POST | `/api/emails/{eventId}/retry` | Reintento manual si `failed`. |
+| GET | `/api/templates?channel=email` | Catálogo por canal. |
+| GET | `/api/health` | App, MongoDB, RabbitMQ (sin API key). |
+
+No hay `POST /api/push` ni `POST /api/sms` en v1.
+
+## Inbox (MongoDB)
+
+Colección `inbox_events`:
+
+- Índice único `event_id`
+- Índice único sparse `(channel, idempotency_key)` — la misma clave puede usarse en email y SMS
+- Claim atómico (`findOneAndUpdate`) con TTL
+- Campo `channel`: `email` | `push` | `sms`
+- `rendered` genérico: email `{ subject, html, text }`
+
+Estados: `received` → `processing` → `sent` | `failed` | `skipped_duplicate`.
+
+## Plantillas
+
+Vistas en `resources/views/notifications/email/{nombre}/v{n}.blade.php`. Catálogo: `config/notification_templates.php`.
+
+## Proveedores de email
+
+`MAIL_MAILER`: `log` (local/testing), `smtp`, `mailgun`, `gmail`. Failover opcional: `MAIL_FAILOVER_MAILER`.

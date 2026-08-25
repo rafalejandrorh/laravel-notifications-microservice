@@ -1,12 +1,13 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "cicpc/laravel-email",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "Microservicio de notificaciones (email ahora; push y SMS después) con Laravel, MongoDB y Symfony Messenger.",
+    "keywords": ["laravel", "notifications", "email", "mongodb", "rabbitmq"],
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "google/apiclient": "^2.18",
         "laravel/framework": "^13.17",
         "laravel/tinker": "^3.0",
         "mongodb/laravel-mongodb": "^5.9",
