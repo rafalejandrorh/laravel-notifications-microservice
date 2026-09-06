@@ -13,7 +13,7 @@ Catálogo por capa. No es un inventario de cada archivo; es el mapa de responsab
 | Canales | `app/Channels/` | Contrato `NotificationChannel`; email real; push/SMS stub |
 | Email | `app/Channels/Email/` | Catálogo, Blade, adapters |
 | Messenger | `app/Messenger/` | Bus, serializer JSON, worker, topología AMQP |
-| Config | `config/notifications.php`, `messenger.php`, `email.php`, `notification_templates.php` | TTL, retries, from, catálogo |
+| Config | `config/notifications.php`, `messenger.php`, `email.php`, `notification_templates.php`, `sivacrim_notification_templates.php` | TTL, retries, from, catálogo |
 | Consola | `app/Console/Commands/` | Índices, setup, consume |
 | Enums / excepciones | `app/Enums/`, `app/Exceptions/` | Canal, estado de inbox, permanente vs transitorio |
 
@@ -108,7 +108,8 @@ Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (+ opciona
 | `config/notifications.php` | API key, claim TTL, max intentos |
 | `config/messenger.php` | DSN, exchange, colas, DLQ, retries, `consume` por transporte |
 | `config/email.php` | Failover, `from_identities`, credenciales Gmail |
-| `config/notification_templates.php` | Catálogo email (`welcome`, `password-reset`); `push`/`sms` vacíos |
+| `config/notification_templates.php` | Catálogo email (`welcome`, `password-reset`) + merge de plantillas SIVACRIM; `push`/`sms` vacíos |
+| `config/sivacrim_notification_templates.php` | Plantillas email de SIVACRIM (`sivacrim-login-code`, `sivacrim-email-validation`, `sivacrim-password-reset`) |
 | `config/mail.php` | `mail.default` y transportes Laravel |
 
 `config/email.php` aún duplica api key / TTL / max attempts (aliases `EMAIL_*`); el dispatch lee `config/notifications.php`.

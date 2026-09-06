@@ -57,6 +57,44 @@ it('sends raw content email', function () {
         ->assertJsonPath('resolved_template', null);
 });
 
+it('sends sivacrim templated emails', function (string $name, array $params) {
+    $eventId = (string) Str::uuid();
+
+    $this->postJson('/api/emails', [
+        'event_id' => $eventId,
+        'payload' => [
+            'to' => [['email' => 'user@example.com']],
+            'template' => [
+                'name' => $name,
+                'params' => $params,
+            ],
+        ],
+    ], ['X-API-Key' => 'testing-key'])
+        ->assertAccepted()
+        ->assertJsonPath('status', InboxStatus::Sent->value)
+        ->assertJsonPath('resolved_template', $name)
+        ->assertJsonPath('resolved_version', 1);
+})->with([
+    ['sivacrim-login-code', ['primer_nombre' => 'Ana', 'code' => 'ABC123']],
+    ['sivacrim-email-validation', ['code' => 'XYZ789']],
+    ['sivacrim-password-reset', ['reset_url' => 'https://sivacrim.test/reset', 'expire_minutes' => '60']],
+]);
+
+it('fails permanently when sivacrim template params are missing', function () {
+    $this->postJson('/api/emails', [
+        'payload' => [
+            'to' => [['email' => 'user@example.com']],
+            'template' => [
+                'name' => 'sivacrim-login-code',
+                'params' => ['code' => 'ABC123'],
+            ],
+        ],
+    ], ['X-API-Key' => 'testing-key'])
+        ->assertAccepted()
+        ->assertJsonPath('status', InboxStatus::Failed->value)
+        ->assertJsonPath('retryable', false);
+});
+
 it('fails permanently when template params are missing', function () {
     $this->postJson('/api/emails', [
         'payload' => [

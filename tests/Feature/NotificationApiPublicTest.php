@@ -11,7 +11,10 @@ it('lists email templates', function () {
     $this->getJson('/api/templates?channel=email', ['X-API-Key' => 'testing-key'])
         ->assertOk()
         ->assertJsonPath('channel', 'email')
-        ->assertJsonFragment(['name' => 'welcome']);
+        ->assertJsonFragment(['name' => 'welcome'])
+        ->assertJsonFragment(['name' => 'sivacrim-login-code'])
+        ->assertJsonFragment(['name' => 'sivacrim-email-validation'])
+        ->assertJsonFragment(['name' => 'sivacrim-password-reset']);
 });
 
 it('rejects invalid template channels', function () {

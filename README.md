@@ -168,7 +168,7 @@ Estados: `received` → `processing` → `sent` | `failed` | `skipped_duplicate`
 
 ## Plantillas
 
-Vistas en `resources/views/notifications/email/{nombre}/v{n}.blade.php`. Catálogo: `config/notification_templates.php`.
+Vistas en `resources/views/notifications/email/{nombre}/v{n}.blade.php`. Catálogo: `config/notification_templates.php`. Plantillas SIVACRIM: `config/sivacrim_notification_templates.php` (se fusionan en el catálogo email). Partials de SIVACRIM versionados en `resources/views/notifications/email/sivacrim-partials/{header|footer}/v{n}.blade.php`.
 
 ## Proveedores de email
 

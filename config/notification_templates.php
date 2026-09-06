@@ -23,6 +23,7 @@ return [
                 ],
             ],
         ],
+        ...require __DIR__.'/sivacrim_notification_templates.php',
     ],
 
     'push' => [],

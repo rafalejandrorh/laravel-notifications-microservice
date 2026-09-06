@@ -9,7 +9,41 @@ it('returns the full catalog when no channel is given', function () {
     $all = (new TemplateCatalog)->all();
 
     expect($all)->toHaveKeys(['email', 'push', 'sms']);
-    expect($all['email'])->toHaveKey('welcome');
+    expect($all['email'])->toHaveKey('welcome')
+        ->and($all['email'])->toHaveKeys([
+            'sivacrim-login-code',
+            'sivacrim-email-validation',
+            'sivacrim-password-reset',
+        ]);
+});
+
+it('resolves sivacrim templates with required params', function (string $name, array $required) {
+    $resolved = (new TemplateCatalog)->resolve(NotificationChannel::Email, $name, null);
+
+    expect($resolved['name'])->toBe($name)
+        ->and($resolved['version'])->toBe(1)
+        ->and($resolved['from_identity'])->toBe('notificaciones')
+        ->and($resolved['required_params'])->toBe($required)
+        ->and($resolved['view'])->toBe("notifications.email.{$name}.v1");
+})->with([
+    ['sivacrim-login-code', ['primer_nombre', 'code']],
+    ['sivacrim-email-validation', ['code']],
+    ['sivacrim-password-reset', ['reset_url', 'expire_minutes']],
+]);
+
+it('merges sivacrim templates from the dedicated config file', function () {
+    $sivacrim = require config_path('sivacrim_notification_templates.php');
+
+    expect($sivacrim)->toHaveKeys([
+        'sivacrim-login-code',
+        'sivacrim-email-validation',
+        'sivacrim-password-reset',
+    ]);
+
+    $email = (new TemplateCatalog)->all(NotificationChannel::Email);
+
+    expect($email['sivacrim-login-code'])->toBe($sivacrim['sivacrim-login-code'])
+        ->and($email)->toHaveKey('welcome');
 });
 
 it('rejects templates that do not exist', function () {
