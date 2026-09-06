@@ -117,7 +117,8 @@ flowchart TD
   Payload[payload template XOR content]
   Resolver[EmailContentResolver]
   Catalog[TemplateCatalog]
-  Blade[TemplateRenderer Blade]
+  Blade[TemplateRenderer Markdown]
+
   Rendered[RenderedNotification]
   Send[EmailChannel.send]
   MailResolver[MailProviderResolver]
@@ -131,8 +132,8 @@ flowchart TD
   MailResolver -.->|MAIL_FAILOVER_MAILER| Failover --> Adapter
 ```
 
-- **Render:** [`EmailChannel::render`](../app/Channels/Email/EmailChannel.php) → [`EmailContentResolver`](../app/Channels/Email/EmailContentResolver.php). Exactamente uno de `template` o `content`. Plantilla: [`TemplateCatalog`](../app/Channels/Email/TemplateCatalog.php) + vistas `resources/views/notifications/email/{nombre}/v{n}.blade.php`. Sin `version` se usa `latest` de [`config/notification_templates.php`](../config/notification_templates.php). La versión y el `from` resueltos se persisten en el inbox.
-- **Send:** construye `RenderedEmail` (destinatarios del payload + `from` del catálogo / identidades) y llama a [`MailProviderResolver`](../app/Channels/Email/MailProviderResolver.php).
+- **Render:** [`EmailChannel::render`](../app/Channels/Email/EmailChannel.php) → [`EmailContentResolver`](../app/Channels/Email/EmailContentResolver.php). Exactamente uno de `template` o `content`. Plantilla: [`TemplateCatalog`](../app/Channels/Email/TemplateCatalog.php) + vistas Markdown `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail::message>`). Sin `version` se usa `latest` de [`config/notification_templates.php`](../config/notification_templates.php). La versión y el `from` resueltos se persisten en el inbox.
+- **Send:** construye `RenderedEmail` (destinatarios del payload + `from` del catálogo / identidades + imágenes CID si el HTML las referencia) y llama a [`MailProviderResolver`](../app/Channels/Email/MailProviderResolver.php).
 
 | `MAIL_MAILER` | Adapter |
 |---------------|---------|

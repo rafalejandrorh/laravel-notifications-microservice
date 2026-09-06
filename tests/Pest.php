@@ -20,5 +20,6 @@ function makeRenderedEmail(array $overrides = []): RenderedEmail
         subject: $overrides['subject'] ?? 'Hola',
         html: array_key_exists('html', $overrides) ? $overrides['html'] : '<p>Cuerpo</p>',
         text: array_key_exists('text', $overrides) ? $overrides['text'] : 'Cuerpo',
+        inlineImages: $overrides['inlineImages'] ?? [],
     );
 }

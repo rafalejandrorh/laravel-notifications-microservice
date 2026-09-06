@@ -12,6 +12,7 @@ class EmailChannel implements NotificationChannelContract
     public function __construct(
         private EmailContentResolver $contentResolver,
         private MailProviderResolver $mailProviders,
+        private InlineImageResolver $inlineImages,
     ) {}
 
     public function supported(): bool
@@ -30,6 +31,8 @@ class EmailChannel implements NotificationChannelContract
         $payload = $event->payload ?? [];
         $from = $event->resolved_from ?? $this->contentResolver->fromIdentity('noreply');
 
+        $html = isset($rendered['html']) ? (string) $rendered['html'] : null;
+
         $message = new RenderedEmail(
             to: EmailContentResolver::normalizeAddresses($payload['to'] ?? []),
             cc: EmailContentResolver::normalizeAddresses($payload['cc'] ?? []),
@@ -40,8 +43,9 @@ class EmailChannel implements NotificationChannelContract
                 'name' => $from['name'] ?? config('mail.from.name'),
             ],
             subject: (string) ($rendered['subject'] ?? ''),
-            html: isset($rendered['html']) ? (string) $rendered['html'] : null,
+            html: $html,
             text: isset($rendered['text']) ? (string) $rendered['text'] : null,
+            inlineImages: $this->inlineImages->resolve($html),
         );
 
         return $this->mailProviders->resolve()->send($message);

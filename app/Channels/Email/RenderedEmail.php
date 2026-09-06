@@ -10,6 +10,7 @@ final readonly class RenderedEmail
      * @param  list<array{email: string, name: string|null}>  $bcc
      * @param  array{email: string, name: string|null}|null  $replyTo
      * @param  array{address: string, name: string|null}  $from
+     * @param  list<array{path: string, name: string, mime: string}>  $inlineImages
      */
     public function __construct(
         public array $to,
@@ -20,5 +21,6 @@ final readonly class RenderedEmail
         public string $subject,
         public ?string $html,
         public ?string $text,
+        public array $inlineImages = [],
     ) {}
 }

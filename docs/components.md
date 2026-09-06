@@ -74,7 +74,9 @@ DTOs compartidos: `RenderedNotification` (contenido + metadata de plantilla/from
 |-------|-----------------|
 | `EmailContentResolver` | XOR template/content → `RenderedNotification`; normaliza direcciones |
 | `TemplateCatalog` | Lookup en `config/notification_templates.php` |
-| `TemplateRenderer` | Blade + interpolación `{param}` en subject |
+| `TemplateRenderer` | Markdown de Laravel (`<x-mail::message>`) + interpolación `{param}` en subject |
+| `InlineImageResolver` | CID en el HTML → archivos de `config/email.php` `inline_images` |
+| `SymfonyEmailFactory` | `RenderedEmail` → `Symfony\Component\Mime\Email` (incluye embeds) |
 | `MailProviderResolver` | `mail.default` → adapter; wrap de failover |
 | `RenderedEmail` | DTO que reciben los adapters |
 | `MailProviderInterface` | `name()` + `send()` |
@@ -83,7 +85,7 @@ DTOs compartidos: `RenderedNotification` (contenido + metadata de plantilla/from
 | `GmailMailAdapter` | Gmail API (service account + usuario delegado) |
 | `FailoverMailAdapter` | Primario; fallback solo si el error es transitorio |
 
-Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (+ opcional `.text.blade.php`). Identidades `noreply` y `notificaciones` en `config/email.php`.
+Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail::message>`, + opcional `.text.blade.php`). Logos CID en `resources/images/sivacrim/`. Identidades `noreply` y `notificaciones` en `config/email.php`.
 
 ## Messenger
 
@@ -107,7 +109,7 @@ Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (+ opciona
 |---------|----------------|
 | `config/notifications.php` | API key, claim TTL, max intentos |
 | `config/messenger.php` | DSN, exchange, colas, DLQ, retries, `consume` por transporte |
-| `config/email.php` | Failover, `from_identities`, credenciales Gmail |
+| `config/email.php` | Failover, `from_identities`, credenciales Gmail, logos CID |
 | `config/notification_templates.php` | Catálogo email (`welcome`, `password-reset`) + merge de plantillas SIVACRIM; `push`/`sms` vacíos |
 | `config/sivacrim_notification_templates.php` | Plantillas email de SIVACRIM (`sivacrim-login-code`, `sivacrim-email-validation`, `sivacrim-password-reset`) |
 | `config/mail.php` | `mail.default` y transportes Laravel |

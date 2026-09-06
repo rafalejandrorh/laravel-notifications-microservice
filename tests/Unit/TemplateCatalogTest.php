@@ -60,13 +60,14 @@ it('rejects missing template views', function () {
 
 it('derives text from html when the text view is missing', function () {
     $rendered = (new TemplateRenderer)->render([
-        'view' => 'welcome',
+        'view' => 'notifications.email.welcome.v1',
         'subject' => 'Hola {name}',
         'required_params' => [],
     ], ['name' => 'Juan']);
 
     expect($rendered['subject'])->toBe('Hola Juan');
-    expect($rendered['html'])->not->toBeEmpty();
+    expect($rendered['html'])->toContain('inner-body')
+        ->and($rendered['html'])->toContain('Juan');
     expect($rendered['text'])->not->toBeEmpty();
     expect($rendered['subject'])->not->toContain('{name}');
 });

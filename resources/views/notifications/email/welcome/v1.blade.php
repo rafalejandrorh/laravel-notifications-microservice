@@ -1,2 +1,5 @@
-<p>Hola {{ $name }},</p>
-<p>Bienvenido a las notificaciones del CICPC.</p>
+<x-mail::message>
+Hola {{ $name }},
+
+Bienvenido a las notificaciones del CICPC.
+</x-mail::message>

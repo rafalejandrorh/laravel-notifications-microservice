@@ -58,8 +58,10 @@ No se lista cada `it()`. Cada archivo cubre un recorte del sistema.
 | `JsonMessageSerializerTest` | Round-trip email, mapeo push/sms, `event_type` desconocido/ausente, JSON inválido, encode |
 | `MessageHandlersTest` | Handlers delegan a dispatch; unsupported → permanente |
 | `NotificationMessageTest` | Canal/event type, `fromInbox`, defaults, `event_id` obligatorio |
-| `EmailContentResolverTest` | Welcome Blade, contenido crudo, XOR, params, versiones, destinatarios, normalización de strings |
+| `EmailContentResolverTest` | Welcome Markdown, contenido crudo, XOR, params, versiones, destinatarios, normalización de strings, layout Laravel y CID SIVACRIM |
 | `TemplateCatalogTest` | Catálogo, vista faltante, subject con placeholders |
+| `InlineImageResolverTest` | CID presentes, ausentes o archivo faltante |
+| `SymfonyEmailFactoryTest` | Destinatarios, reply-to y embed de logos |
 | `MailProviderResolverTest` | smtp/sendmail/mailgun/gmail/log/array; rechazo de mailer desconocido; wrap de failover |
 | `LaravelMailAdapterTest` | Envío vía `log` (cc/bcc/reply-to); excepción de Mail → transitorio |
 | `FailoverMailAdapterTest` | Éxito primario; permanente no cae; transitorio sí; ambos transitorios relanzan el del primario |

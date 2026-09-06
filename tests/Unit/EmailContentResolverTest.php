@@ -26,7 +26,8 @@ it('renders welcome template and uses latest when version is omitted', function 
     expect($rendered->templateName)->toBe('welcome');
     expect($rendered->templateVersion)->toBe(1);
     expect($rendered->content['subject'])->toBe('Bienvenido, Juan');
-    expect($rendered->content['html'])->toContain('Juan');
+    expect($rendered->content['html'])->toContain('Juan')
+        ->and($rendered->content['html'])->toContain('inner-body');
 });
 
 it('renders raw content without blade', function () {
@@ -69,6 +70,8 @@ it('renders sivacrim login code template', function () {
         ->and($rendered->content['subject'])->toBe('Validacion de Inicio de Sesión | SIVACRIM')
         ->and($rendered->content['html'])->toContain('Ana')
         ->and($rendered->content['html'])->toContain('ABC123')
+        ->and($rendered->content['html'])->toContain('inner-body')
+        ->and($rendered->content['html'])->toContain('cid:logo_cicpc.png')
         ->and($rendered->content['text'])->toContain('ABC123');
 });
 
@@ -102,7 +105,9 @@ it('renders sivacrim password reset template', function () {
     expect($rendered->templateName)->toBe('sivacrim-password-reset')
         ->and($rendered->content['subject'])->toBe('Solicitud de Reestablecimiento de Contraseña')
         ->and($rendered->content['html'])->toContain('https://sivacrim.test/password/reset/token')
+        ->and($rendered->content['html'])->toContain('button-primary')
         ->and($rendered->content['html'])->toContain('60')
+        ->and($rendered->content['html'])->toContain('cid:logo_cicpc.png')
         ->and($rendered->content['text'])->toContain('Cambiar contraseña');
 });
 
