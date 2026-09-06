@@ -146,7 +146,7 @@ Auth: header `X-API-Key`.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/api/emails` | Disparo email (mismo contrato). `202`. |
+| POST | `/api/emails` | Encola el email (mismo contrato). `202` con `status: received`. |
 | GET | `/api/notifications/{eventId}` | Estado (channel, status, provider resuelto). |
 | POST | `/api/emails/{eventId}/retry` | Reintento manual si `failed`. |
 | GET | `/api/templates?channel=email` | Catálogo por canal. |
@@ -168,7 +168,7 @@ Estados: `received` → `processing` → `sent` | `failed` | `skipped_duplicate`
 
 ## Plantillas
 
-Vistas en `resources/views/notifications/email/{nombre}/v{n}.blade.php`, envueltas en `<x-mail::message>` (tema Markdown de Laravel). Catálogo: `config/notification_templates.php`. Plantillas SIVACRIM: `config/sivacrim_notification_templates.php` (se fusionan en el catálogo email). Partials de SIVACRIM versionados en `resources/views/notifications/email/sivacrim-partials/{header|footer}/v{n}.blade.php`. Los logos de SIVACRIM se incrustan como CID (`resources/images/sivacrim/`), no como URL del productor.
+Vistas en `resources/views/notifications/email/{nombre}/v{n}.blade.php`, envueltas en `<x-mail::message>`. Tema Markdown `sivacrim` (`resources/views/vendor/mail/html/themes/sivacrim.css`): layout Laravel con texto centrado, como los correos originales de SIVACRIM. Catálogo: `config/notification_templates.php`. Plantillas SIVACRIM: `config/sivacrim_notification_templates.php` (se fusionan en el catálogo email). Partials de SIVACRIM versionados en `resources/views/notifications/email/sivacrim-partials/{header|footer}/v{n}.blade.php`. Los logos de SIVACRIM se incrustan como CID (`resources/images/sivacrim/`), no como URL del productor.
 
 ## Proveedores de email
 

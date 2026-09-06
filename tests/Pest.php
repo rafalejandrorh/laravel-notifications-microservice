@@ -1,6 +1,8 @@
 <?php
 
 use App\Channels\Email\RenderedEmail;
+use App\Message\NotificationMessage;
+use App\Messenger\MessengerFactory;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class)
@@ -22,4 +24,21 @@ function makeRenderedEmail(array $overrides = []): RenderedEmail
         text: array_key_exists('text', $overrides) ? $overrides['text'] : 'Cuerpo',
         inlineImages: $overrides['inlineImages'] ?? [],
     );
+}
+
+/**
+ * @return object{messages: list<NotificationMessage>}
+ */
+function fakeMessengerSend(): object
+{
+    $published = (object) ['messages' => []];
+
+    $messenger = Mockery::mock(MessengerFactory::class);
+    $messenger->shouldReceive('send')->andReturnUsing(function ($message) use ($published): void {
+        $published->messages[] = $message;
+    });
+
+    app()->instance(MessengerFactory::class, $messenger);
+
+    return $published;
 }

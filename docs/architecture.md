@@ -6,7 +6,7 @@ El productor describe *qué* enviar. Este servicio decide *con qué proveedor*. 
 
 ## Vista general
 
-Hay **dos entradas y un núcleo**. HTTP y RabbitMQ convergen en `NotificationDispatchService`, que persiste el evento en el inbox, reclama el envío y delega al canal.
+Hay **dos entradas y un núcleo**. HTTP persiste el inbox y publica a RabbitMQ. El worker y los productores que ya publican al bus convergen en `NotificationDispatchService`, que reclama el envío y delega al canal.
 
 ```mermaid
 flowchart LR
@@ -14,6 +14,7 @@ flowchart LR
   Api["POST /api/emails"]
   Rabbit[RabbitMQ topic]
   Worker["messenger:consume email"]
+  Enqueue[NotificationEnqueueService]
   Dispatch[NotificationDispatchService]
   Inbox[(MongoDB inbox_events)]
   Channel[EmailChannel]
@@ -21,7 +22,9 @@ flowchart LR
 
   Producer --> Api
   Producer --> Rabbit
-  Api --> Dispatch
+  Api --> Enqueue
+  Enqueue --> Inbox
+  Enqueue --> Rabbit
   Rabbit --> Worker --> Dispatch
   Dispatch --> Inbox
   Dispatch --> Channel --> Provider
@@ -31,23 +34,24 @@ Infra local: MongoDB 7 y RabbitMQ 3 (`docker compose up -d`). La app PHP no corr
 
 ## Dos entradas, un núcleo
 
-### HTTP (síncrono)
+### HTTP (asíncrono)
 
 Rutas en [`routes/api.php`](../routes/api.php), prefijo `/api`.
 
 1. `AuthenticateApiKey` valida el header `X-API-Key` (salvo `GET /health`).
 2. `POST /emails` → [`EmailController::store`](../app/Http/Controllers/EmailController.php) → [`StoreEmailRequest::toMessage()`](../app/Http/Requests/StoreEmailRequest.php).
 3. Si no viene `event_id`, se genera un UUID. Se eliminan `payload.provider` y `payload.from`.
-4. [`NotificationDispatchService::dispatch`](../app/Services/NotificationDispatchService.php) corre **en el mismo request** y responde `202` con el estado del inbox.
+4. [`NotificationEnqueueService::enqueue`](../app/Services/NotificationEnqueueService.php) persiste el inbox (`received`) y publica con [`MessengerFactory::send`](../app/Messenger/MessengerFactory.php) (`transport()->send(Envelope)`).
+5. Responde `202` con `status: received`. Si el publish a RabbitMQ falla, `503`.
 
-No se publica a RabbitMQ desde la API. El bus es el camino de otros microservicios.
+El `bus()` de Messenger sigue siendo solo de consumo (`HandleMessageMiddleware`). No se mezcla send y handle en el mismo bus.
 
-### RabbitMQ (asíncrono)
+### RabbitMQ (worker)
 
-1. El productor publica JSON al exchange topic (`MESSENGER_EXCHANGE`, en `.env.example`: `notificaciones`).
+1. El productor (esta API u otro servicio) publica JSON al exchange topic (`MESSENGER_EXCHANGE`, en `.env.example`: `notificaciones`).
 2. `php artisan messenger:consume email` arranca el worker ([`MessengerConsumeCommand`](../app/Console/Commands/MessengerConsumeCommand.php)).
 3. [`MessengerFactory`](../app/Messenger/MessengerFactory.php) declara topología, deserializa con [`JsonMessageSerializer`](../app/Messenger/JsonMessageSerializer.php) y enruta al handler.
-4. `SendEmailMessageHandler` llama al mismo `NotificationDispatchService::dispatch`.
+4. `SendEmailMessageHandler` llama a `NotificationDispatchService::dispatch`.
 
 El serializer es JSON interoperable (no el formato PHP de Symfony). Si el `event_type` es desconocido o el envelope es inválido, el mensaje se convierte en `UnsupportedNotificationMessage` (fallo permanente).
 
@@ -92,7 +96,7 @@ stateDiagram-v2
 
 Claim reclaimable si: `received`; o `failed` + `retryable`; o `processing` con `claimed_at` más viejo que `notifications.claim_ttl_seconds` (default 300). El `worker_id` es `hostname:pid`.
 
-Reintento manual: `POST /api/emails/{eventId}/retry` resetea a `received` y vuelve a `dispatch`. Solo email, solo si no está `sent`.
+Reintento manual: `POST /api/emails/{eventId}/retry` resetea a `received` y vuelve a `enqueue` (publica; no envía en el request). Solo email, solo si no está `sent`.
 
 ## Messenger
 
@@ -132,7 +136,7 @@ flowchart TD
   MailResolver -.->|MAIL_FAILOVER_MAILER| Failover --> Adapter
 ```
 
-- **Render:** [`EmailChannel::render`](../app/Channels/Email/EmailChannel.php) → [`EmailContentResolver`](../app/Channels/Email/EmailContentResolver.php). Exactamente uno de `template` o `content`. Plantilla: [`TemplateCatalog`](../app/Channels/Email/TemplateCatalog.php) + vistas Markdown `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail::message>`). Sin `version` se usa `latest` de [`config/notification_templates.php`](../config/notification_templates.php). La versión y el `from` resueltos se persisten en el inbox.
+- **Render:** [`EmailChannel::render`](../app/Channels/Email/EmailChannel.php) → [`EmailContentResolver`](../app/Channels/Email/EmailContentResolver.php). Exactamente uno de `template` o `content`. Plantilla: [`TemplateCatalog`](../app/Channels/Email/TemplateCatalog.php) + vistas Markdown `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail::message>`, tema `sivacrim` con texto centrado). Sin `version` se usa `latest` de [`config/notification_templates.php`](../config/notification_templates.php). La versión y el `from` resueltos se persisten en el inbox.
 - **Send:** construye `RenderedEmail` (destinatarios del payload + `from` del catálogo / identidades + imágenes CID si el HTML las referencia) y llama a [`MailProviderResolver`](../app/Channels/Email/MailProviderResolver.php).
 
 | `MAIL_MAILER` | Adapter |

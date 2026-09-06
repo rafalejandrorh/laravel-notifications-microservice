@@ -9,7 +9,7 @@ Catálogo por capa. No es un inventario de cada archivo; es el mapa de responsab
 | HTTP | `app/Http/` | API key, validación, 202, retry, estado, catálogo, health |
 | Dominio mensajes | `app/Message/` | Envelope JSON → DTO por `event_type` |
 | Handlers | `app/MessageHandler/` | Messenger → `NotificationDispatchService` |
-| Dispatch + inbox | `app/Services/`, `app/Repositories/`, `app/Models/InboxEvent.php` | Orquestación e idempotencia |
+| Dispatch + inbox | `app/Services/`, `app/Repositories/`, `app/Models/InboxEvent.php` | Enqueue HTTP, orquestación del worker e idempotencia |
 | Canales | `app/Channels/` | Contrato `NotificationChannel`; email real; push/SMS stub |
 | Email | `app/Channels/Email/` | Catálogo, Blade, adapters |
 | Messenger | `app/Messenger/` | Bus, serializer JSON, worker, topología AMQP |
@@ -22,7 +22,7 @@ Catálogo por capa. No es un inventario de cada archivo; es el mapa de responsab
 | Clase | Responsabilidad |
 |-------|-----------------|
 | `AuthenticateApiKey` | Header `X-API-Key` vs `notifications.api_key` |
-| `EmailController` | `POST /emails` (202) y `POST /emails/{eventId}/retry` |
+| `EmailController` | `POST /emails` (202 `received`) y `POST /emails/{eventId}/retry`; 503 si falla el publish |
 | `NotificationController` | `GET /notifications/{eventId}` |
 | `TemplateController` | `GET /templates?channel=` |
 | `HealthController` | `GET /health`: ping Mongo + RabbitMQ |
@@ -47,6 +47,7 @@ Cada `Send*MessageHandler` solo llama a `NotificationDispatchService::dispatch`.
 
 | Clase | Responsabilidad |
 |-------|-----------------|
+| `NotificationEnqueueService` | persist inbox → publicar con `MessengerFactory::send` si no es terminal / failed permanente |
 | `NotificationDispatchService` | persist → claim → render → send; tope de intentos |
 | `InboxEventRepository` | `persistNew`, `claim`, `storeRendered`, `markSent` / `markFailed`, índices, retry manual |
 | `InboxPersistResult` | evento + `wasInserted` / duplicado |
@@ -85,13 +86,13 @@ DTOs compartidos: `RenderedNotification` (contenido + metadata de plantilla/from
 | `GmailMailAdapter` | Gmail API (service account + usuario delegado) |
 | `FailoverMailAdapter` | Primario; fallback solo si el error es transitorio |
 
-Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail::message>`, + opcional `.text.blade.php`). Logos CID en `resources/images/sivacrim/`. Identidades `noreply` y `notificaciones` en `config/email.php`.
+Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail::message>`, + opcional `.text.blade.php`). Tema `sivacrim` en `resources/views/vendor/mail/html/themes/sivacrim.css` (texto centrado). Logos CID en `resources/images/sivacrim/`. Identidades `noreply` y `notificaciones` en `config/email.php`.
 
 ## Messenger
 
 | Clase | Responsabilidad |
 |-------|-----------------|
-| `MessengerFactory` | Bus, transportes AMQP, worker, retries, DLQ, `setupTopology()` |
+| `MessengerFactory` | Bus de consumo, `send()` al transporte AMQP, worker, retries, DLQ, `setupTopology()` |
 | `JsonMessageSerializer` | Encode/decode JSON por `event_type` |
 | `SimpleServiceLocator` | PSR-11 mínimo para listeners de Messenger |
 
@@ -112,7 +113,7 @@ Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail:
 | `config/email.php` | Failover, `from_identities`, credenciales Gmail, logos CID |
 | `config/notification_templates.php` | Catálogo email (`welcome`, `password-reset`) + merge de plantillas SIVACRIM; `push`/`sms` vacíos |
 | `config/sivacrim_notification_templates.php` | Plantillas email de SIVACRIM (`sivacrim-login-code`, `sivacrim-email-validation`, `sivacrim-password-reset`) |
-| `config/mail.php` | `mail.default` y transportes Laravel |
+| `config/mail.php` | `mail.default`, transportes Laravel y tema Markdown `sivacrim` |
 
 `config/email.php` aún duplica api key / TTL / max attempts (aliases `EMAIL_*`); el dispatch lee `config/notifications.php`.
 

@@ -2,6 +2,7 @@
 
 use App\Enums\InboxStatus;
 use App\Enums\NotificationChannel;
+use App\Message\SendEmailMessage;
 use App\Repositories\InboxEventRepository;
 use Illuminate\Support\Str;
 use Tests\Concerns\InteractsWithMongoInbox;
@@ -11,6 +12,7 @@ uses(InteractsWithMongoInbox::class);
 beforeEach(function () {
     $this->setUpMongoInbox();
     $this->inbox = $this->app->make(InboxEventRepository::class);
+    $this->published = fakeMessengerSend();
 });
 
 it('returns 404 when retrying a missing event', function () {
@@ -45,17 +47,24 @@ it('rejects retry when the event is not an email', function () {
 it('rejects retry when the email was already sent', function () {
     $eventId = (string) Str::uuid();
 
-    $this->postJson('/api/emails', [
-        'event_id' => $eventId,
-        'payload' => retryEmailPayload(),
-    ], ['X-API-Key' => 'testing-key'])->assertAccepted();
+    $persist = $this->inbox->persistNew(
+        NotificationChannel::Email,
+        $eventId,
+        NotificationChannel::Email->eventType(),
+        null,
+        null,
+        retryEmailPayload(),
+    );
+    $this->inbox->markSent($persist->event, 'log');
 
     $this->postJson("/api/emails/{$eventId}/retry", [], ['X-API-Key' => 'testing-key'])
         ->assertConflict()
         ->assertJsonPath('message', 'El evento ya fue enviado.');
+
+    expect($this->published->messages)->toHaveCount(0);
 });
 
-it('retries a failed email and sends it', function () {
+it('retries a failed email by publishing to the queue', function () {
     $eventId = (string) Str::uuid();
 
     $persist = $this->inbox->persistNew(
@@ -71,8 +80,11 @@ it('retries a failed email and sends it', function () {
     $this->postJson("/api/emails/{$eventId}/retry", [], ['X-API-Key' => 'testing-key'])
         ->assertAccepted()
         ->assertJsonPath('event_id', $eventId)
-        ->assertJsonPath('status', InboxStatus::Sent->value)
-        ->assertJsonPath('resolved_provider', 'log');
+        ->assertJsonPath('status', InboxStatus::Received->value);
+
+    expect($this->published->messages)->toHaveCount(1);
+    expect($this->published->messages[0])->toBeInstanceOf(SendEmailMessage::class);
+    expect($this->published->messages[0]->eventId)->toBe($eventId);
 });
 
 it('creates inbox indexes via artisan', function () {

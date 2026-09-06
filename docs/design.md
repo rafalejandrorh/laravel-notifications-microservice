@@ -33,13 +33,13 @@ Laravel Queue / `jobs` no orquesta el envío. SQLite/migraciones del scaffold no
 
 **Consecuencia.** Cualquier lenguaje puede publicar al exchange. El worker de email es el único consumidor v1; push/SMS declaran cola para no romper a los productores que ya publiquen.
 
-## HTTP dispara en el request; el bus es para otros servicios
+## HTTP persiste y publica; el worker envía
 
-**Contexto.** Hace falta una API interna (`POST /api/emails` → 202) y un bus para microservicios.
+**Contexto.** Hace falta una API interna (`POST /api/emails` → 202) y un bus para microservicios. Enviar SMTP en el request HTTP retrasa a todos los productores.
 
-**Decisión.** La API **no publica a RabbitMQ**. Llama a `NotificationDispatchService` en el mismo proceso. Quien consume el bus es `messenger:consume email`.
+**Decisión.** La API persiste el inbox como `received` y publica el DTO con `MessengerFactory::send()` al transporte AMQP del canal. No llama a `NotificationDispatchService` en el request. Quien envía es `messenger:consume email`. Si el evento ya está `sent` o `failed` no retryable, no se vuelve a publicar. Si RabbitMQ falla después de persistir, la API responde 503 (sin fallback síncrono).
 
-**Consecuencia.** Un cliente HTTP obtiene estado inmediato (y el inbox queda consultable). El acoplamiento a RabbitMQ queda en el camino asíncrono. El mismo núcleo cubre ambos.
+**Consecuencia.** Un cliente HTTP obtiene `202` con `status: received` de inmediato; el inbox queda consultable. El envío (y los fallos de plantilla) ocurren en el worker. HTTP y productores AMQP nativos convergen en la misma cola y el mismo núcleo.
 
 ## Permanentes vs transitorios
 
@@ -64,7 +64,7 @@ Permanentes típicos: XOR de template/content, emails inválidos, params de plan
 
 **Decisión.** Interfaz [`NotificationChannel`](../app/Channels/Contracts/NotificationChannel.php) (`render`, `send`, `supported`). [`ChannelRegistry`](../app/Channels/ChannelRegistry.php) registra los tres. Email `supported() = true`. Push/SMS `supported() = false` y `consume: false` en Messenger.
 
-**Consecuencia.** Activar un canal es: implementar send real, `supported() = true`, `consume: true`, catálogo de plantillas. El inbox y el envelope ya están listos. Hasta entonces, un `push.send` / `sms.send` que caiga en el worker de email (o un dispatch HTTP de esos DTOs) falla permanente.
+**Consecuencia.** Activar un canal es: implementar send real, `supported() = true`, `consume: true`, catálogo de plantillas. El inbox y el envelope ya están listos. Hasta entonces, un `push.send` / `sms.send` que caiga en el worker de email falla permanente.
 
 ## Template XOR content, versión persistida
 

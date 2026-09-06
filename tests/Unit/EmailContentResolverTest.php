@@ -72,6 +72,7 @@ it('renders sivacrim login code template', function () {
         ->and($rendered->content['html'])->toContain('ABC123')
         ->and($rendered->content['html'])->toContain('inner-body')
         ->and($rendered->content['html'])->toContain('cid:logo_cicpc.png')
+        ->and($rendered->content['html'])->toContain('text-align: center')
         ->and($rendered->content['text'])->toContain('ABC123');
 });
 
@@ -108,6 +109,7 @@ it('renders sivacrim password reset template', function () {
         ->and($rendered->content['html'])->toContain('button-primary')
         ->and($rendered->content['html'])->toContain('60')
         ->and($rendered->content['html'])->toContain('cid:logo_cicpc.png')
+        ->and($rendered->content['html'])->toContain('text-align: center')
         ->and($rendered->content['text'])->toContain('Cambiar contraseña');
 });
 

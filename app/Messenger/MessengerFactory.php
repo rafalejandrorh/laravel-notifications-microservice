@@ -2,6 +2,7 @@
 
 namespace App\Messenger;
 
+use App\Message\NotificationMessage;
 use App\Message\SendEmailMessage;
 use App\Message\SendPushMessage;
 use App\Message\SendSmsMessage;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Messenger\Bridge\Amqp\Transport\AmqpTransport;
 use Symfony\Component\Messenger\Bridge\Amqp\Transport\AmqpTransportFactory;
+use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\EventListener\AddErrorDetailsStampListener;
 use Symfony\Component\Messenger\EventListener\SendFailedMessageForRetryListener;
 use Symfony\Component\Messenger\EventListener\SendFailedMessageToFailureTransportListener;
@@ -55,6 +57,11 @@ class MessengerFactory
                 UnsupportedNotificationMessage::class => [$this->unsupportedHandler],
             ])),
         ]);
+    }
+
+    public function send(NotificationMessage $message): void
+    {
+        $this->transport($message->channel()->value)->send(new Envelope($message));
     }
 
     public function transport(string $name, bool $failure = false): AmqpTransport

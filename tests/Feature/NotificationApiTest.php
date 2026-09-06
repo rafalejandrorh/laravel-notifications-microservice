@@ -1,14 +1,20 @@
 <?php
 
 use App\Enums\InboxStatus;
+use App\Message\SendEmailMessage;
+use App\Messenger\MessengerFactory;
+use App\Models\InboxEvent;
 use Illuminate\Support\Str;
 use Tests\Concerns\InteractsWithMongoInbox;
 
 uses(InteractsWithMongoInbox::class);
 
-beforeEach(fn () => $this->setUpMongoInbox());
+beforeEach(function () {
+    $this->setUpMongoInbox();
+    $this->published = fakeMessengerSend();
+});
 
-it('sends a templated email', function () {
+it('enqueues a templated email', function () {
     $eventId = (string) Str::uuid();
 
     $this->postJson('/api/emails', [
@@ -28,18 +34,26 @@ it('sends a templated email', function () {
         ->assertAccepted()
         ->assertJsonPath('event_id', $eventId)
         ->assertJsonPath('channel', 'email')
-        ->assertJsonPath('status', InboxStatus::Sent->value)
-        ->assertJsonPath('resolved_provider', 'log')
-        ->assertJsonPath('resolved_template', 'welcome')
-        ->assertJsonPath('resolved_version', 1);
+        ->assertJsonPath('status', InboxStatus::Received->value)
+        ->assertJsonPath('resolved_provider', null)
+        ->assertJsonPath('resolved_template', null);
+
+    expect($this->published->messages)->toHaveCount(1);
+    expect($this->published->messages[0])->toBeInstanceOf(SendEmailMessage::class);
+    expect($this->published->messages[0]->eventId)->toBe($eventId);
+
+    $event = InboxEvent::query()->where('event_id', $eventId)->first();
+    expect($event?->payload)->not->toHaveKey('from');
+    expect($event?->payload)->not->toHaveKey('provider');
 
     $this->getJson("/api/notifications/{$eventId}", ['X-API-Key' => 'testing-key'])
         ->assertOk()
-        ->assertJsonPath('resolved_provider', 'log')
+        ->assertJsonPath('status', InboxStatus::Received->value)
+        ->assertJsonPath('resolved_provider', null)
         ->assertJsonMissingPath('payload.from');
 });
 
-it('sends raw content email', function () {
+it('enqueues a raw content email', function () {
     $eventId = (string) Str::uuid();
 
     $this->postJson('/api/emails', [
@@ -53,11 +67,13 @@ it('sends raw content email', function () {
         ],
     ], ['X-API-Key' => 'testing-key'])
         ->assertAccepted()
-        ->assertJsonPath('status', InboxStatus::Sent->value)
+        ->assertJsonPath('status', InboxStatus::Received->value)
         ->assertJsonPath('resolved_template', null);
+
+    expect($this->published->messages)->toHaveCount(1);
 });
 
-it('sends sivacrim templated emails', function (string $name, array $params) {
+it('enqueues sivacrim templated emails', function (string $name, array $params) {
     $eventId = (string) Str::uuid();
 
     $this->postJson('/api/emails', [
@@ -71,16 +87,19 @@ it('sends sivacrim templated emails', function (string $name, array $params) {
         ],
     ], ['X-API-Key' => 'testing-key'])
         ->assertAccepted()
-        ->assertJsonPath('status', InboxStatus::Sent->value)
-        ->assertJsonPath('resolved_template', $name)
-        ->assertJsonPath('resolved_version', 1);
+        ->assertJsonPath('status', InboxStatus::Received->value);
+
+    expect($this->published->messages)->toHaveCount(1);
+
+    $event = InboxEvent::query()->where('event_id', $eventId)->first();
+    expect($event?->payload['template']['name'] ?? null)->toBe($name);
 })->with([
     ['sivacrim-login-code', ['primer_nombre' => 'Ana', 'code' => 'ABC123']],
     ['sivacrim-email-validation', ['code' => 'XYZ789']],
     ['sivacrim-password-reset', ['reset_url' => 'https://sivacrim.test/reset', 'expire_minutes' => '60']],
 ]);
 
-it('fails permanently when sivacrim template params are missing', function () {
+it('enqueues emails even when template params are missing', function () {
     $this->postJson('/api/emails', [
         'payload' => [
             'to' => [['email' => 'user@example.com']],
@@ -91,21 +110,28 @@ it('fails permanently when sivacrim template params are missing', function () {
         ],
     ], ['X-API-Key' => 'testing-key'])
         ->assertAccepted()
-        ->assertJsonPath('status', InboxStatus::Failed->value)
-        ->assertJsonPath('retryable', false);
+        ->assertJsonPath('status', InboxStatus::Received->value);
+
+    expect($this->published->messages)->toHaveCount(1);
 });
 
-it('fails permanently when template params are missing', function () {
+it('returns 503 when the queue publish fails', function () {
+    $messenger = Mockery::mock(MessengerFactory::class);
+    $messenger->shouldReceive('send')->once()->andThrow(new RuntimeException('amqp down'));
+    $this->app->instance(MessengerFactory::class, $messenger);
+
+    $eventId = (string) Str::uuid();
+
     $this->postJson('/api/emails', [
+        'event_id' => $eventId,
         'payload' => [
             'to' => [['email' => 'user@example.com']],
-            'template' => [
-                'name' => 'welcome',
-                'params' => [],
-            ],
+            'content' => ['subject' => 'Hola', 'text' => 'Cuerpo'],
         ],
     ], ['X-API-Key' => 'testing-key'])
-        ->assertAccepted()
-        ->assertJsonPath('status', InboxStatus::Failed->value)
-        ->assertJsonPath('retryable', false);
+        ->assertStatus(503)
+        ->assertJsonPath('message', 'No se pudo encolar el evento.');
+
+    expect(InboxEvent::query()->where('event_id', $eventId)->first()?->status)
+        ->toBe(InboxStatus::Received);
 });

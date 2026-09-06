@@ -150,3 +150,90 @@ it('marks an event as skipped duplicate', function () {
     expect($again->status)->toBe(InboxStatus::SkippedDuplicate);
     expect($again->attempts)->toBe(0);
 });
+
+it('sends a templated email', function () {
+    $event = app(NotificationDispatchService::class)->dispatch(SendEmailMessage::fromArray([
+        'event_id' => 'welcome-1',
+        'payload' => [
+            'to' => [['email' => 'user@example.com', 'name' => 'Usuario']],
+            'template' => [
+                'name' => 'welcome',
+                'params' => ['name' => 'Juan'],
+            ],
+        ],
+    ]));
+
+    expect($event->status)->toBe(InboxStatus::Sent);
+    expect($event->resolved_provider)->toBe('log');
+    expect($event->resolved_template)->toBe('welcome');
+    expect($event->resolved_version)->toBe(1);
+});
+
+it('sends a raw content email', function () {
+    $event = app(NotificationDispatchService::class)->dispatch(SendEmailMessage::fromArray([
+        'event_id' => 'raw-1',
+        'payload' => [
+            'to' => [['email' => 'user@example.com']],
+            'content' => [
+                'subject' => 'Asunto crudo',
+                'html' => '<p>Hola</p>',
+            ],
+        ],
+    ]));
+
+    expect($event->status)->toBe(InboxStatus::Sent);
+    expect($event->resolved_template)->toBeNull();
+});
+
+it('sends sivacrim templated emails', function (string $name, array $params) {
+    $event = app(NotificationDispatchService::class)->dispatch(SendEmailMessage::fromArray([
+        'event_id' => 'sivacrim-'.$name,
+        'payload' => [
+            'to' => [['email' => 'user@example.com']],
+            'template' => [
+                'name' => $name,
+                'params' => $params,
+            ],
+        ],
+    ]));
+
+    expect($event->status)->toBe(InboxStatus::Sent);
+    expect($event->resolved_template)->toBe($name);
+    expect($event->resolved_version)->toBe(1);
+})->with([
+    ['sivacrim-login-code', ['primer_nombre' => 'Ana', 'code' => 'ABC123']],
+    ['sivacrim-email-validation', ['code' => 'XYZ789']],
+    ['sivacrim-password-reset', ['reset_url' => 'https://sivacrim.test/reset', 'expire_minutes' => '60']],
+]);
+
+it('fails permanently when sivacrim template params are missing', function () {
+    $event = app(NotificationDispatchService::class)->dispatch(SendEmailMessage::fromArray([
+        'event_id' => 'sivacrim-missing-params',
+        'payload' => [
+            'to' => [['email' => 'user@example.com']],
+            'template' => [
+                'name' => 'sivacrim-login-code',
+                'params' => ['code' => 'ABC123'],
+            ],
+        ],
+    ]));
+
+    expect($event->status)->toBe(InboxStatus::Failed);
+    expect($event->retryable)->toBeFalse();
+});
+
+it('fails permanently when template params are missing', function () {
+    $event = app(NotificationDispatchService::class)->dispatch(SendEmailMessage::fromArray([
+        'event_id' => 'welcome-missing-params',
+        'payload' => [
+            'to' => [['email' => 'user@example.com']],
+            'template' => [
+                'name' => 'welcome',
+                'params' => [],
+            ],
+        ],
+    ]));
+
+    expect($event->status)->toBe(InboxStatus::Failed);
+    expect($event->retryable)->toBeFalse();
+});
