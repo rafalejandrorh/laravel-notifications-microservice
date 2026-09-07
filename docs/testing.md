@@ -50,7 +50,7 @@ No se lista cada `it()`. Cada archivo cubre un recorte del sistema.
 | `InboxIdempotencyTest` | Mismo `event_id`; misma `idempotency_key` en un canal; la misma clave sí en otro canal |
 | `EmailRetryTest` | 404, 422 si no es email, 409 si ya `sent`, retry de `failed` → `sent`; `inbox:ensure-indexes` |
 | `ConsoleCommandsTest` | Transporte desconocido, `consume` de push en v1, `messenger:setup`/`consume` con factory mockeados; rechazo si driver `laravel` |
-| `NotificationEnqueueServiceTest` | Persist + publish; skip de terminal/permanente; republish de received; job Laravel si el driver es `laravel` |
+| `NotificationEnqueueServiceTest` | Persist + publish; skip de terminal/permanente; republish de received; job Laravel en `email.send` si el driver es `laravel` |
 
 ### Unit (`tests/Unit/`)
 
@@ -58,7 +58,7 @@ No se lista cada `it()`. Cada archivo cubre un recorte del sistema.
 |---------|-----------|
 | `JsonMessageSerializerTest` | Round-trip email, mapeo push/sms, `event_type` desconocido/ausente, JSON inválido, encode |
 | `MessageHandlersTest` | Handlers delegan a dispatch; unsupported → permanente; transitorio → Recoverable Messenger |
-| `NotificationQueueTest` | Publish AMQP vs dispatch de `SendNotificationJob` |
+| `NotificationQueueTest` | Publish AMQP vs dispatch de `SendNotificationJob` a `email.send` / `push.send` / `sms.send` |
 | `SendNotificationJobTest` | Carga inbox y dispatch; no-op si falta el evento; backoff |
 | `QueueDriverTest` | `rabbitmq` / `laravel` / valor inválido |
 | `MessengerExceptionMappingTest` | Excepciones de dominio sin interfaces Messenger; wrappers del borde AMQP |

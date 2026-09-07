@@ -57,7 +57,9 @@ El serializer es JSON interoperable (no el formato PHP de Symfony). Si el `event
 
 ### `laravel` (solo API HTTP)
 
-No hay pub/sub AMQP. Los eventos entran solo por `POST /api/emails`. [`LaravelNotificationQueue`](../app/Queue/LaravelNotificationQueue.php) despacha [`SendNotificationJob`](../app/Jobs/SendNotificationJob.php) (`event_id`). `php artisan queue:work` carga el inbox y llama a `NotificationDispatchService`. El job no sustituye al inbox: Laravel borra la fila de `jobs` al terminar; el historial sigue en Mongo.
+No hay pub/sub AMQP. Los eventos entran solo por `POST /api/emails`. [`LaravelNotificationQueue`](../app/Queue/LaravelNotificationQueue.php) despacha [`SendNotificationJob`](../app/Jobs/SendNotificationJob.php) (`event_id`) a la cola del canal (`email.send`, `push.send`, `sms.send`). `php artisan queue:work --queue=email.send` carga el inbox y llama a `NotificationDispatchService`. El job no sustituye al inbox: Laravel borra la fila de `jobs` al terminar; el historial sigue en Mongo.
+
+v1 solo consume email (como Messenger). Escalar es más procesos del mismo comando. Push/SMS se encolan en su cola pero no se levantan workers hasta que el canal esté habilitado.
 
 `QUEUE_CONNECTION` elige el backend (`database`, `redis`, …). No usar `sync` en producción. `messenger:setup` y `messenger:consume` se niegan.
 
@@ -167,7 +169,7 @@ Comandos:
 | `inbox:ensure-indexes` | Índices únicos del inbox |
 | `messenger:setup` | Exchange, colas, DLQs (solo driver `rabbitmq`) |
 | `messenger:consume email` | Worker de email (solo driver `rabbitmq`) |
-| `queue:work` | Worker Laravel (solo driver `laravel`) |
+| `queue:work --queue=email.send` | Worker Laravel de email (solo driver `laravel`; más réplicas para escalar) |
 
 ## Límites v1
 

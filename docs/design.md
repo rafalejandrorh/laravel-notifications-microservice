@@ -40,7 +40,7 @@ El envío lo dispara el driver de cola (`NOTIFICATION_QUEUE_DRIVER`): Messenger/
 **Decisión.** La API persiste el inbox como `received` y publica con `NotificationQueue::publish()`. No llama a `NotificationDispatchService` en el request.
 
 - `rabbitmq`: publica el DTO con `MessengerFactory::send()`; quien envía es `messenger:consume email`. Productores externos pueden publicar JSON al exchange.
-- `laravel`: despacha `SendNotificationJob`; quien envía es `queue:work`. No hay ingestión AMQP.
+- `laravel`: despacha `SendNotificationJob` a la cola del canal (`email.send`, …); quien envía es `queue:work --queue=email.send`. No hay ingestión AMQP.
 
 Si el evento ya está `sent` o `failed` no retryable, no se vuelve a publicar. Si el publish falla después de persistir, la API responde 503 (sin fallback síncrono).
 

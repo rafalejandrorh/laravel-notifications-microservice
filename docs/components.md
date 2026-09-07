@@ -50,7 +50,7 @@ Cada `Send*MessageHandler` llama a `NotificationDispatchService::dispatch` y map
 |-------|-----------------|
 | `NotificationEnqueueService` | persist inbox → `NotificationQueue::publish` si no es terminal / failed permanente |
 | `NotificationQueue` | Contrato de publicación; `RabbitMqNotificationQueue` o `LaravelNotificationQueue` |
-| `SendNotificationJob` | Worker Laravel: carga el inbox por `event_id` y llama a dispatch |
+| `SendNotificationJob` | Worker Laravel: cola por `routingKey()` del canal; carga el inbox por `event_id` y llama a dispatch |
 | `NotificationDispatchService` | persist → claim → render → send; tope de intentos |
 | `InboxEventRepository` | `persistNew`, `claim`, `storeRendered`, `markSent` / `markFailed`, índices, retry manual |
 | `InboxPersistResult` | evento + `wasInserted` / duplicado |

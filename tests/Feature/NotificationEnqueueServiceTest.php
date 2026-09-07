@@ -128,7 +128,7 @@ it('dispatches a laravel job when the queue driver is laravel', function () {
     $event = app(NotificationEnqueueService::class)->enqueue($message);
 
     expect($event->status)->toBe(InboxStatus::Received);
-    Queue::assertPushed(SendNotificationJob::class, fn (SendNotificationJob $job): bool => $job->eventId === 'enq-laravel');
+    Queue::assertPushedOn('email.send', SendNotificationJob::class, fn (SendNotificationJob $job): bool => $job->eventId === 'enq-laravel');
 });
 
 /**

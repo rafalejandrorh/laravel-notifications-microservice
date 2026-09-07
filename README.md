@@ -38,8 +38,11 @@ php artisan messenger:consume email --time-limit=3600
 
 ```bash
 # QUEUE_CONNECTION=database o redis (no sync en producción)
-php artisan queue:work
+php artisan queue:work --queue=email.send
+# escala: más procesos/réplicas del mismo comando
 ```
+
+Cuando se activen canales: `--queue=push.send` y `--queue=sms.send` en procesos separados.
 
 ## RabbitMQ
 
