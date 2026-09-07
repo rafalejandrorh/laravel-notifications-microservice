@@ -32,7 +32,7 @@ Si Mongo no responde, [`InteractsWithMongoInbox`](../tests/Concerns/InteractsWit
 
 ## Bootstrap
 
-- [`tests/Pest.php`](../tests/Pest.php): Feature y Unit extienden `Tests\TestCase`. Helper global `makeRenderedEmail()`.
+- [`tests/Pest.php`](../tests/Pest.php): Feature y Unit extienden `Tests\TestCase`. Helpers `makeRenderedEmail()` y `fakeNotificationQueue()`.
 - [`tests/TestCase.php`](../tests/TestCase.php): `Illuminate\Foundation\Testing\TestCase` (boot estándar de Laravel).
 - Trait `InteractsWithMongoInbox`: `setUpMongoInbox()` en los Feature que tocan la colección.
 
@@ -45,18 +45,23 @@ No se lista cada `it()`. Cada archivo cubre un recorte del sistema.
 | Archivo | Qué cubre |
 |---------|-----------|
 | `NotificationApiTest` | `POST /api/emails` 202: plantilla, contenido crudo, fallo permanente por params; GET de estado; `from` eliminado |
-| `NotificationApiPublicTest` | 401 sin API key, listado de plantillas, canal inválido 422, XOR template/content, health 200/503 |
+| `NotificationApiPublicTest` | 401 sin API key, listado de plantillas, canal inválido 422, XOR template/content, health 200/503 por driver |
 | `NotificationDispatchServiceTest` | Duplicado no retryable, canales push/sms deshabilitados, transitorio que relanza, race de claim, tope de intentos, `skipped_duplicate` |
 | `InboxIdempotencyTest` | Mismo `event_id`; misma `idempotency_key` en un canal; la misma clave sí en otro canal |
 | `EmailRetryTest` | 404, 422 si no es email, 409 si ya `sent`, retry de `failed` → `sent`; `inbox:ensure-indexes` |
-| `ConsoleCommandsTest` | Transporte desconocido, `consume` de push en v1, `messenger:setup` y `consume` con factory/worker mockeados |
+| `ConsoleCommandsTest` | Transporte desconocido, `consume` de push en v1, `messenger:setup`/`consume` con factory mockeados; rechazo si driver `laravel` |
+| `NotificationEnqueueServiceTest` | Persist + publish; skip de terminal/permanente; republish de received; job Laravel si el driver es `laravel` |
 
 ### Unit (`tests/Unit/`)
 
 | Archivo | Qué cubre |
 |---------|-----------|
 | `JsonMessageSerializerTest` | Round-trip email, mapeo push/sms, `event_type` desconocido/ausente, JSON inválido, encode |
-| `MessageHandlersTest` | Handlers delegan a dispatch; unsupported → permanente |
+| `MessageHandlersTest` | Handlers delegan a dispatch; unsupported → permanente; transitorio → Recoverable Messenger |
+| `NotificationQueueTest` | Publish AMQP vs dispatch de `SendNotificationJob` |
+| `SendNotificationJobTest` | Carga inbox y dispatch; no-op si falta el evento; backoff |
+| `QueueDriverTest` | `rabbitmq` / `laravel` / valor inválido |
+| `MessengerExceptionMappingTest` | Excepciones de dominio sin interfaces Messenger; wrappers del borde AMQP |
 | `NotificationMessageTest` | Canal/event type, `fromInbox`, defaults, `event_id` obligatorio |
 | `EmailContentResolverTest` | Welcome Markdown, contenido crudo, XOR, params, versiones, destinatarios, normalización de strings, layout Laravel y CID SIVACRIM |
 | `TemplateCatalogTest` | Catálogo, vista faltante, subject con placeholders |
@@ -78,7 +83,7 @@ No se lista cada `it()`. Cada archivo cubre un recorte del sistema.
 2. **Unit** si es una clase aislada (serializer, resolver, adapter, registry).
 3. Reutiliza `makeRenderedEmail()` y los helpers locales del archivo (`dispatchEmail`, payloads, etc.) en lugar de duplicar envelopes.
 4. Mailer: deja `MAIL_MAILER=log`. No apuntes tests a SMTP real.
-5. Messenger: mockea `MessengerFactory` / `Worker` como en `ConsoleCommandsTest`; no levantes un consumidor AMQP.
+5. Cola: `fakeNotificationQueue()` en API/enqueue; mockea `MessengerFactory` / `Worker` en comandos Messenger. No levantes un consumidor AMQP.
 6. Auth HTTP: header `X-API-Key: testing-key` (valor de `phpunit.xml`).
 7. Tras añadir código en `app/`, `composer test:coverage` debe seguir ≥ 83 %.
 

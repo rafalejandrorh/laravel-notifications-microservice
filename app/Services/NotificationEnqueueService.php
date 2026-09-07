@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
+use App\Contracts\NotificationQueue;
 use App\Enums\InboxStatus;
 use App\Message\NotificationMessage;
-use App\Messenger\MessengerFactory;
 use App\Models\InboxEvent;
 use App\Repositories\InboxEventRepository;
 
@@ -12,7 +12,7 @@ class NotificationEnqueueService
 {
     public function __construct(
         private InboxEventRepository $inbox,
-        private MessengerFactory $messenger,
+        private NotificationQueue $queue,
     ) {}
 
     public function enqueue(NotificationMessage $message): InboxEvent
@@ -32,7 +32,7 @@ class NotificationEnqueueService
             return $event;
         }
 
-        $this->messenger->send($message::fromInbox($event));
+        $this->queue->publish($message::fromInbox($event));
 
         return $event;
     }

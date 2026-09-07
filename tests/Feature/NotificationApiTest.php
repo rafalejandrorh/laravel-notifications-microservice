@@ -1,8 +1,8 @@
 <?php
 
+use App\Contracts\NotificationQueue;
 use App\Enums\InboxStatus;
 use App\Message\SendEmailMessage;
-use App\Messenger\MessengerFactory;
 use App\Models\InboxEvent;
 use Illuminate\Support\Str;
 use Tests\Concerns\InteractsWithMongoInbox;
@@ -11,7 +11,7 @@ uses(InteractsWithMongoInbox::class);
 
 beforeEach(function () {
     $this->setUpMongoInbox();
-    $this->published = fakeMessengerSend();
+    $this->published = fakeNotificationQueue();
 });
 
 it('enqueues a templated email', function () {
@@ -116,9 +116,9 @@ it('enqueues emails even when template params are missing', function () {
 });
 
 it('returns 503 when the queue publish fails', function () {
-    $messenger = Mockery::mock(MessengerFactory::class);
-    $messenger->shouldReceive('send')->once()->andThrow(new RuntimeException('amqp down'));
-    $this->app->instance(MessengerFactory::class, $messenger);
+    $queue = Mockery::mock(NotificationQueue::class);
+    $queue->shouldReceive('publish')->once()->andThrow(new RuntimeException('amqp down'));
+    $this->app->instance(NotificationQueue::class, $queue);
 
     $eventId = (string) Str::uuid();
 

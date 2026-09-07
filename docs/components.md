@@ -10,12 +10,13 @@ Catálogo por capa. No es un inventario de cada archivo; es el mapa de responsab
 | Dominio mensajes | `app/Message/` | Envelope JSON → DTO por `event_type` |
 | Handlers | `app/MessageHandler/` | Messenger → `NotificationDispatchService` |
 | Dispatch + inbox | `app/Services/`, `app/Repositories/`, `app/Models/InboxEvent.php` | Enqueue HTTP, orquestación del worker e idempotencia |
+| Cola | `app/Contracts/NotificationQueue.php`, `app/Queue/`, `app/Jobs/` | Driver `rabbitmq` o `laravel`; job fino de `event_id` |
 | Canales | `app/Channels/` | Contrato `NotificationChannel`; email real; push/SMS stub |
 | Email | `app/Channels/Email/` | Catálogo, Blade, adapters |
-| Messenger | `app/Messenger/` | Bus, serializer JSON, worker, topología AMQP |
-| Config | `config/notifications.php`, `messenger.php`, `email.php`, `notification_templates.php`, `sivacrim_notification_templates.php` | TTL, retries, from, catálogo |
+| Messenger | `app/Messenger/` | Bus, serializer JSON, worker, topología AMQP (driver `rabbitmq`) |
+| Config | `config/notifications.php`, `messenger.php`, `email.php`, `notification_templates.php`, `sivacrim_notification_templates.php` | TTL, driver de cola, retries, from, catálogo |
 | Consola | `app/Console/Commands/` | Índices, setup, consume |
-| Enums / excepciones | `app/Enums/`, `app/Exceptions/` | Canal, estado de inbox, permanente vs transitorio |
+| Enums / excepciones | `app/Enums/`, `app/Exceptions/` | Canal, driver de cola, estado de inbox, permanente vs transitorio |
 
 ## HTTP
 
@@ -25,7 +26,7 @@ Catálogo por capa. No es un inventario de cada archivo; es el mapa de responsab
 | `EmailController` | `POST /emails` (202 `received`) y `POST /emails/{eventId}/retry`; 503 si falla el publish |
 | `NotificationController` | `GET /notifications/{eventId}` |
 | `TemplateController` | `GET /templates?channel=` |
-| `HealthController` | `GET /health`: ping Mongo + RabbitMQ |
+| `HealthController` | `GET /health`: ping Mongo + RabbitMQ o cola Laravel según el driver |
 | `StoreEmailRequest` | Validación XOR template/content; `toMessage()`; strip de `provider`/`from` |
 
 Rutas: [`routes/api.php`](../routes/api.php). No hay `POST /push` ni `POST /sms` en v1.
@@ -41,25 +42,28 @@ Envelope común: `event_id`, `event_type`, `occurred_at`, `idempotency_key`, `pa
 | `SendSmsMessage` | `sms.send.requested` | `sms.send` |
 | `UnsupportedNotificationMessage` | desconocido / inválido | — |
 
-Cada `Send*MessageHandler` solo llama a `NotificationDispatchService::dispatch`. `UnsupportedNotificationMessageHandler` lanza permanente con el `reason` del decode.
+Cada `Send*MessageHandler` llama a `NotificationDispatchService::dispatch` y mapea transitorios a `RecoverableNotificationException`. `UnsupportedNotificationMessageHandler` lanza `UnrecoverableNotificationException` con el `reason` del decode.
 
 ## Dispatch e inbox
 
 | Clase | Responsabilidad |
 |-------|-----------------|
-| `NotificationEnqueueService` | persist inbox → publicar con `MessengerFactory::send` si no es terminal / failed permanente |
+| `NotificationEnqueueService` | persist inbox → `NotificationQueue::publish` si no es terminal / failed permanente |
+| `NotificationQueue` | Contrato de publicación; `RabbitMqNotificationQueue` o `LaravelNotificationQueue` |
+| `SendNotificationJob` | Worker Laravel: carga el inbox por `event_id` y llama a dispatch |
 | `NotificationDispatchService` | persist → claim → render → send; tope de intentos |
 | `InboxEventRepository` | `persistNew`, `claim`, `storeRendered`, `markSent` / `markFailed`, índices, retry manual |
 | `InboxPersistResult` | evento + `wasInserted` / duplicado |
 | `InboxEvent` | Documento Mongo `inbox_events` |
 | `InboxStatus` | `received` \| `processing` \| `sent` \| `failed` \| `skipped_duplicate` |
 | `NotificationChannel` (enum) | `email` \| `push` \| `sms` + `eventType()` / `routingKey()` |
+| `QueueDriver` (enum) | `rabbitmq` \| `laravel` |
 
 ## Canales
 
 Contrato [`NotificationChannel`](../app/Channels/Contracts/NotificationChannel.php): `render()`, `send()`, `supported()`.
 
-[`ChannelRegistry`](../app/Channels/ChannelRegistry.php) se registra como singleton en [`AppServiceProvider`](../app/Providers/AppServiceProvider.php): email, push, sms.
+[`ChannelRegistry`](../app/Channels/ChannelRegistry.php) (email, push, sms) y [`NotificationQueue`](../app/Contracts/NotificationQueue.php) se registran como singleton en [`AppServiceProvider`](../app/Providers/AppServiceProvider.php).
 
 | Canal | Clase | `supported()` |
 |-------|-------|----------------|
@@ -95,20 +99,21 @@ Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail:
 | `MessengerFactory` | Bus de consumo, `send()` al transporte AMQP, worker, retries, DLQ, `setupTopology()` |
 | `JsonMessageSerializer` | Encode/decode JSON por `event_type` |
 | `SimpleServiceLocator` | PSR-11 mínimo para listeners de Messenger |
+| `UnrecoverableNotificationException` / `RecoverableNotificationException` | Mapeo de permanentes/transitorios a interfaces de Messenger |
 
 ## Consola
 
 | Comando | Clase |
 |---------|-------|
 | `inbox:ensure-indexes` | `EnsureInboxIndexesCommand` |
-| `messenger:setup` | `MessengerSetupCommand` |
-| `messenger:consume {transport}` | `MessengerConsumeCommand` — solo si `consume: true` |
+| `messenger:setup` | `MessengerSetupCommand` — solo driver `rabbitmq` |
+| `messenger:consume {transport}` | `MessengerConsumeCommand` — solo si `consume: true` y driver `rabbitmq` |
 
 ## Config relevante
 
 | Archivo | Qué controla |
 |---------|----------------|
-| `config/notifications.php` | API key, claim TTL, max intentos |
+| `config/notifications.php` | API key, claim TTL, max intentos, `queue_driver`, retry del job Laravel |
 | `config/messenger.php` | DSN, exchange, colas, DLQ, retries, `consume` por transporte |
 | `config/email.php` | Failover, `from_identities`, credenciales Gmail, logos CID |
 | `config/notification_templates.php` | Catálogo email (`welcome`, `password-reset`) + merge de plantillas SIVACRIM; `push`/`sms` vacíos |
@@ -121,8 +126,8 @@ Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail:
 
 | Clase | Efecto |
 |-------|--------|
-| `PermanentNotificationException` | Sin retry Messenger; inbox no retryable |
-| `TransientNotificationException` | Retry Messenger; inbox retryable |
+| `PermanentNotificationException` | Inbox no retryable; en Messenger se mapea a `UnrecoverableNotificationException` |
+| `TransientNotificationException` | Inbox retryable; en Messenger se mapea a `RecoverableNotificationException` |
 | `ChannelNotEnabledException` | Extiende permanente (canal stub) |
 
 ## Fuera del flujo de notificaciones
@@ -130,6 +135,6 @@ Vistas: `resources/views/notifications/email/{nombre}/v{n}.blade.php` (`<x-mail:
 No participan en envío, inbox ni Messenger:
 
 - `app/Models/User.php` y `database/factories/UserFactory.php`
-- migraciones scaffold (`users`, `cache`, `jobs`) y SQLite
+- migraciones scaffold (`users`, `cache`) y SQLite, salvo que el driver `laravel` use `QUEUE_CONNECTION=database` (`jobs` / `failed_jobs`)
 - `routes/web.php` / vista `welcome.blade.php`
 - `app/Http/Controllers/Controller.php` (base vacía)

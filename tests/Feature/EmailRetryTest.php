@@ -12,7 +12,7 @@ uses(InteractsWithMongoInbox::class);
 beforeEach(function () {
     $this->setUpMongoInbox();
     $this->inbox = $this->app->make(InboxEventRepository::class);
-    $this->published = fakeMessengerSend();
+    $this->published = fakeNotificationQueue();
 });
 
 it('returns 404 when retrying a missing event', function () {

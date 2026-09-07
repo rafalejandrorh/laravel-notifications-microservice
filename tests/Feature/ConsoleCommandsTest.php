@@ -45,3 +45,19 @@ it('consumes with a mocked worker and optional message limit', function () {
         ->expectsOutput('Consumiendo [email] (cola email.send).')
         ->assertSuccessful();
 });
+
+it('refuses messenger consume when the queue driver is laravel', function () {
+    config(['notifications.queue_driver' => 'laravel']);
+
+    $this->artisan('messenger:consume', ['transport' => 'email'])
+        ->expectsOutput('Pub/sub AMQP desactivado (NOTIFICATION_QUEUE_DRIVER no es rabbitmq).')
+        ->assertFailed();
+});
+
+it('refuses messenger setup when the queue driver is laravel', function () {
+    config(['notifications.queue_driver' => 'laravel']);
+
+    $this->artisan('messenger:setup')
+        ->expectsOutput('Pub/sub AMQP desactivado (NOTIFICATION_QUEUE_DRIVER no es rabbitmq).')
+        ->assertFailed();
+});

@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\PermanentNotificationException;
+use App\Exceptions\TransientNotificationException;
 use App\Message\SendEmailMessage;
 use App\Message\SendPushMessage;
 use App\Message\SendSmsMessage;
@@ -9,6 +10,7 @@ use App\MessageHandler\SendEmailMessageHandler;
 use App\MessageHandler\SendPushMessageHandler;
 use App\MessageHandler\SendSmsMessageHandler;
 use App\MessageHandler\UnsupportedNotificationMessageHandler;
+use App\Messenger\RecoverableNotificationException;
 use App\Models\InboxEvent;
 use App\Services\NotificationDispatchService;
 
@@ -53,3 +55,16 @@ it('rejects unsupported messages as permanent failures', function () {
         new UnsupportedNotificationMessage(['event_id' => 'x'], 'Tipo de evento no soportado: fax.send.requested.'),
     );
 })->throws(PermanentNotificationException::class, 'Tipo de evento no soportado: fax.send.requested.');
+
+it('maps transient dispatch failures to recoverable messenger exceptions', function () {
+    $message = SendEmailMessage::fromArray([
+        'event_id' => '550e8400-e29b-41d4-a716-446655440003',
+        'payload' => [],
+    ]);
+
+    $dispatcher = Mockery::mock(NotificationDispatchService::class);
+    $dispatcher->shouldReceive('dispatch')->once()->with($message)
+        ->andThrow(new TransientNotificationException('smtp down'));
+
+    (new SendEmailMessageHandler($dispatcher))($message);
+})->throws(RecoverableNotificationException::class, 'smtp down');

@@ -31,6 +31,7 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="log"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="NOTIFICATION_QUEUE_DRIVER" value="rabbitmq"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="EMAIL_API_KEY" value="testing-key"/>
         <env name="NOTIFICATIONS_API_KEY" value="testing-key"/>

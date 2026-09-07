@@ -2,26 +2,34 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\QueueDriver;
 use App\Messenger\MessengerFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Throwable;
 
 class HealthController extends Controller
 {
-    public function __invoke(MessengerFactory $messenger): JsonResponse
+    public function __invoke(): JsonResponse
     {
         $mongo = $this->mongoOk();
-        $rabbit = $this->rabbitOk($messenger);
-        $ok = $mongo && $rabbit;
+        $checks = [
+            'app' => true,
+            'mongodb' => $mongo,
+        ];
+
+        if (QueueDriver::current()->isRabbitMq()) {
+            $checks['rabbitmq'] = $this->rabbitOk();
+        } else {
+            $checks['queue'] = $this->queueOk();
+        }
+
+        $ok = ! in_array(false, $checks, true);
 
         return response()->json([
             'status' => $ok ? 'ok' : 'degraded',
-            'checks' => [
-                'app' => true,
-                'mongodb' => $mongo,
-                'rabbitmq' => $rabbit,
-            ],
+            'checks' => $checks,
         ], $ok ? 200 : 503);
     }
 
@@ -36,10 +44,27 @@ class HealthController extends Controller
         }
     }
 
-    private function rabbitOk(MessengerFactory $messenger): bool
+    private function rabbitOk(): bool
     {
         try {
-            $messenger->transport('email')->getMessageCount();
+            app(MessengerFactory::class)->transport('email')->getMessageCount();
+
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function queueOk(): bool
+    {
+        try {
+            $connection = (string) config('queue.default');
+
+            if (in_array($connection, ['sync', 'null'], true)) {
+                return true;
+            }
+
+            Queue::connection($connection)->size();
 
             return true;
         } catch (Throwable) {

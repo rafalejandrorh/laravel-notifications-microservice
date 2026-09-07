@@ -1,59 +1,65 @@
 # Arquitectura
 
-Microservicio Laravel 13 (PHP 8.3) para enviar notificaciones. **v1 envía solo email.** Push y SMS tienen contrato JSON, colas RabbitMQ e inbox en MongoDB; no hay workers ni envío real de esos canales.
+Microservicio Laravel 13 (PHP 8.3) para enviar notificaciones. **v1 envía solo email.** Push y SMS tienen contrato JSON, colas e inbox en MongoDB; no hay workers ni envío real de esos canales.
 
 El productor describe *qué* enviar. Este servicio decide *con qué proveedor*. El contrato de uso (payloads y API) está en el [README](../README.md). Las decisiones de diseño están en [design.md](design.md). El mapa de clases está en [components.md](components.md).
 
 ## Vista general
 
-Hay **dos entradas y un núcleo**. HTTP persiste el inbox y publica a RabbitMQ. El worker y los productores que ya publican al bus convergen en `NotificationDispatchService`, que reclama el envío y delega al canal.
+Hay **una API HTTP, un núcleo y un driver de cola**. HTTP persiste el inbox y publica al driver (`NOTIFICATION_QUEUE_DRIVER`). El worker (Messenger o `queue:work`) y, solo en modo `rabbitmq`, los productores AMQP convergen en `NotificationDispatchService`, que reclama el envío y delega al canal.
 
 ```mermaid
 flowchart LR
   Producer[Productor]
   Api["POST /api/emails"]
-  Rabbit[RabbitMQ topic]
-  Worker["messenger:consume email"]
   Enqueue[NotificationEnqueueService]
+  QueueIface[NotificationQueue]
   Dispatch[NotificationDispatchService]
   Inbox[(MongoDB inbox_events)]
   Channel[EmailChannel]
   Provider[Mail adapters]
 
   Producer --> Api
-  Producer --> Rabbit
   Api --> Enqueue
   Enqueue --> Inbox
-  Enqueue --> Rabbit
-  Rabbit --> Worker --> Dispatch
+  Enqueue --> QueueIface
+  QueueIface --> Dispatch
   Dispatch --> Inbox
   Dispatch --> Channel --> Provider
 ```
 
-Infra local: MongoDB 7 y RabbitMQ 3 (`docker compose up -d`). La app PHP no corre en Compose.
+`NOTIFICATION_QUEUE_DRIVER`: `rabbitmq` (default) o `laravel`. Infra local: MongoDB 7; RabbitMQ 3 solo si el driver es `rabbitmq` (`docker compose up -d`). La app PHP no corre en Compose.
 
-## Dos entradas, un núcleo
-
-### HTTP (asíncrono)
+## HTTP (asíncrono)
 
 Rutas en [`routes/api.php`](../routes/api.php), prefijo `/api`.
 
 1. `AuthenticateApiKey` valida el header `X-API-Key` (salvo `GET /health`).
 2. `POST /emails` → [`EmailController::store`](../app/Http/Controllers/EmailController.php) → [`StoreEmailRequest::toMessage()`](../app/Http/Requests/StoreEmailRequest.php).
 3. Si no viene `event_id`, se genera un UUID. Se eliminan `payload.provider` y `payload.from`.
-4. [`NotificationEnqueueService::enqueue`](../app/Services/NotificationEnqueueService.php) persiste el inbox (`received`) y publica con [`MessengerFactory::send`](../app/Messenger/MessengerFactory.php) (`transport()->send(Envelope)`).
-5. Responde `202` con `status: received`. Si el publish a RabbitMQ falla, `503`.
+4. [`NotificationEnqueueService::enqueue`](../app/Services/NotificationEnqueueService.php) persiste el inbox (`received`) y publica con [`NotificationQueue::publish`](../app/Contracts/NotificationQueue.php).
+5. Responde `202` con `status: received`. Si el publish falla, `503`.
+
+## Drivers de cola
+
+### `rabbitmq` (pub/sub AMQP)
+
+Dos entradas: HTTP y mensajes JSON al exchange. [`RabbitMqNotificationQueue`](../app/Queue/RabbitMqNotificationQueue.php) delega a [`MessengerFactory::send`](../app/Messenger/MessengerFactory.php).
 
 El `bus()` de Messenger sigue siendo solo de consumo (`HandleMessageMiddleware`). No se mezcla send y handle en el mismo bus.
-
-### RabbitMQ (worker)
 
 1. El productor (esta API u otro servicio) publica JSON al exchange topic (`MESSENGER_EXCHANGE`, en `.env.example`: `notificaciones`).
 2. `php artisan messenger:consume email` arranca el worker ([`MessengerConsumeCommand`](../app/Console/Commands/MessengerConsumeCommand.php)).
 3. [`MessengerFactory`](../app/Messenger/MessengerFactory.php) declara topología, deserializa con [`JsonMessageSerializer`](../app/Messenger/JsonMessageSerializer.php) y enruta al handler.
-4. `SendEmailMessageHandler` llama a `NotificationDispatchService::dispatch`.
+4. `SendEmailMessageHandler` llama a `NotificationDispatchService::dispatch`. Transitorios se relanzan como `RecoverableNotificationException`; tipos desconocidos como `UnrecoverableNotificationException`.
 
 El serializer es JSON interoperable (no el formato PHP de Symfony). Si el `event_type` es desconocido o el envelope es inválido, el mensaje se convierte en `UnsupportedNotificationMessage` (fallo permanente).
+
+### `laravel` (solo API HTTP)
+
+No hay pub/sub AMQP. Los eventos entran solo por `POST /api/emails`. [`LaravelNotificationQueue`](../app/Queue/LaravelNotificationQueue.php) despacha [`SendNotificationJob`](../app/Jobs/SendNotificationJob.php) (`event_id`). `php artisan queue:work` carga el inbox y llama a `NotificationDispatchService`. El job no sustituye al inbox: Laravel borra la fila de `jobs` al terminar; el historial sigue en Mongo.
+
+`QUEUE_CONNECTION` elige el backend (`database`, `redis`, …). No usar `sync` en producción. `messenger:setup` y `messenger:consume` se niegan.
 
 ## Inbox (MongoDB)
 
@@ -150,7 +156,7 @@ Si `MAIL_FAILOVER_MAILER` está definido y es distinto del primario, se envuelve
 
 ## Auth, API y operaciones
 
-Auth: header `X-API-Key` frente a `NOTIFICATIONS_API_KEY`. `GET /api/health` no exige clave; comprueba app, MongoDB y RabbitMQ (`ok` 200 / `degraded` 503).
+Auth: header `X-API-Key` frente a `NOTIFICATIONS_API_KEY`. `GET /api/health` no exige clave; comprueba app, MongoDB y, según el driver, RabbitMQ o la cola Laravel (`ok` 200 / `degraded` 503).
 
 Rutas protegidas: `POST /emails`, `GET /notifications/{eventId}`, `POST /emails/{eventId}/retry`, `GET /templates`. No hay `POST /api/push` ni `POST /api/sms` en v1.
 
@@ -159,8 +165,9 @@ Comandos:
 | Comando | Rol |
 |---------|-----|
 | `inbox:ensure-indexes` | Índices únicos del inbox |
-| `messenger:setup` | Exchange, colas, DLQs |
-| `messenger:consume email` | Worker de email |
+| `messenger:setup` | Exchange, colas, DLQs (solo driver `rabbitmq`) |
+| `messenger:consume email` | Worker de email (solo driver `rabbitmq`) |
+| `queue:work` | Worker Laravel (solo driver `laravel`) |
 
 ## Límites v1
 

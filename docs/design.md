@@ -10,9 +10,9 @@ Decisiones que dan forma al microservicio. Cada apartado: contexto, decisión y 
 
 **Consecuencia.** Cambiar de proveedor es un cambio de config, no de productores. Un productor no puede forzar un remitente arbitrario.
 
-## Inbox en MongoDB, no jobs de Laravel
+## Inbox en MongoDB; la cola es solo transporte
 
-**Contexto.** El mismo evento puede llegar por HTTP y por cola, más de una vez (at-least-once). Hace falta un registro durable, claim entre workers y consulta de estado por `event_id`.
+**Contexto.** El mismo evento puede llegar por HTTP y, en modo `rabbitmq`, por AMQP, más de una vez (at-least-once). Hace falta un registro durable, claim entre workers y consulta de estado por `event_id`.
 
 **Decisión.** Colección `inbox_events` con:
 
@@ -21,9 +21,9 @@ Decisiones que dan forma al microservicio. Cada apartado: contexto, decisión y 
 - claim atómico (`findOneAndUpdate`) con TTL (`NOTIFICATION_CLAIM_TTL`)
 - tope de intentos (`NOTIFICATION_MAX_SEND_ATTEMPTS`)
 
-Laravel Queue / `jobs` no orquesta el envío. SQLite/migraciones del scaffold no participan en este flujo.
+El envío lo dispara el driver de cola (`NOTIFICATION_QUEUE_DRIVER`): Messenger/AMQP o un job Laravel fino (`SendNotificationJob` con `event_id`). El job **no** sustituye al inbox: desaparece al completar; el historial y la idempotencia siguen en Mongo.
 
-**Consecuencia.** HTTP y el worker de Messenger comparten la misma idempotencia. Un duplicado de `event_id` o de `(channel, idempotency_key)` no reenvía si el documento ya está en estado terminal o `failed` no retryable. La misma `idempotency_key` sí puede usarse en email y en SMS.
+**Consecuencia.** HTTP y el worker (Messenger o `queue:work`) comparten la misma idempotencia. Un duplicado de `event_id` o de `(channel, idempotency_key)` no reenvía si el documento ya está en estado terminal o `failed` no retryable. La misma `idempotency_key` sí puede usarse en email y en SMS.
 
 ## Symfony Messenger y JSON interoperable
 
@@ -35,11 +35,16 @@ Laravel Queue / `jobs` no orquesta el envío. SQLite/migraciones del scaffold no
 
 ## HTTP persiste y publica; el worker envía
 
-**Contexto.** Hace falta una API interna (`POST /api/emails` → 202) y un bus para microservicios. Enviar SMTP en el request HTTP retrasa a todos los productores.
+**Contexto.** Hace falta una API interna (`POST /api/emails` → 202) y, en algunos despliegues, un bus para microservicios. Enviar SMTP en el request HTTP retrasa a todos los productores.
 
-**Decisión.** La API persiste el inbox como `received` y publica el DTO con `MessengerFactory::send()` al transporte AMQP del canal. No llama a `NotificationDispatchService` en el request. Quien envía es `messenger:consume email`. Si el evento ya está `sent` o `failed` no retryable, no se vuelve a publicar. Si RabbitMQ falla después de persistir, la API responde 503 (sin fallback síncrono).
+**Decisión.** La API persiste el inbox como `received` y publica con `NotificationQueue::publish()`. No llama a `NotificationDispatchService` en el request.
 
-**Consecuencia.** Un cliente HTTP obtiene `202` con `status: received` de inmediato; el inbox queda consultable. El envío (y los fallos de plantilla) ocurren en el worker. HTTP y productores AMQP nativos convergen en la misma cola y el mismo núcleo.
+- `rabbitmq`: publica el DTO con `MessengerFactory::send()`; quien envía es `messenger:consume email`. Productores externos pueden publicar JSON al exchange.
+- `laravel`: despacha `SendNotificationJob`; quien envía es `queue:work`. No hay ingestión AMQP.
+
+Si el evento ya está `sent` o `failed` no retryable, no se vuelve a publicar. Si el publish falla después de persistir, la API responde 503 (sin fallback síncrono).
+
+**Consecuencia.** Un cliente HTTP obtiene `202` con `status: received` de inmediato; el inbox queda consultable. El envío (y los fallos de plantilla) ocurren en el worker. En modo `rabbitmq`, HTTP y productores AMQP nativos convergen en la misma cola y el mismo núcleo. En modo `laravel`, los productores deben usar la API.
 
 ## Permanentes vs transitorios
 
@@ -47,10 +52,10 @@ Laravel Queue / `jobs` no orquesta el envío. SQLite/migraciones del scaffold no
 
 **Decisión.**
 
-| Tipo | Clase | Interfaz Messenger | Inbox |
-|------|-------|--------------------|-------|
-| Permanente | `PermanentNotificationException` | `UnrecoverableExceptionInterface` | `failed`, `retryable: false`; no retry de Messenger |
-| Transitorio | `TransientNotificationException` | `RecoverableExceptionInterface` | `failed`, `retryable: true`; se relanza para retry/DLQ |
+| Tipo | Clase de dominio | Borde Messenger | Inbox |
+|------|------------------|-----------------|-------|
+| Permanente | `PermanentNotificationException` | `UnrecoverableNotificationException` | `failed`, `retryable: false`; no retry de Messenger |
+| Transitorio | `TransientNotificationException` | `RecoverableNotificationException` | `failed`, `retryable: true`; se relanza para retry/DLQ |
 
 Cualquier otro `Throwable` en dispatch se trata como transitorio para el inbox y se relanza. `ChannelNotEnabledException` extiende permanente.
 
@@ -84,4 +89,4 @@ Permanentes típicos: XOR de template/content, emails inválidos, params de plan
 
 ## `skipped_duplicate` no se usa en el camino vivo
 
-El enum y `InboxEventRepository::markSkippedDuplicate()` existen. El dispatch de producción **no** llama a ese método: un duplicado ya `sent` sale por `isTerminal()`; un duplicado `failed` no retryable sale sin claim. El estado queda cubierto por tests, no por el flujo HTTP/Messenger actual.
+El enum y `InboxEventRepository::markSkippedDuplicate()` existen. El dispatch de producción **no** llama a ese método: un duplicado ya `sent` sale por `isTerminal()`; un duplicado `failed` no retryable sale sin claim. El estado queda cubierto por tests, no por el flujo HTTP/worker actual.

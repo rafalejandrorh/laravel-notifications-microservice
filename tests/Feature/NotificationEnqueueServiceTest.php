@@ -1,10 +1,13 @@
 <?php
 
+use App\Contracts\NotificationQueue;
 use App\Enums\InboxStatus;
 use App\Enums\NotificationChannel;
+use App\Jobs\SendNotificationJob;
 use App\Message\SendEmailMessage;
 use App\Repositories\InboxEventRepository;
 use App\Services\NotificationEnqueueService;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\InteractsWithMongoInbox;
 
 uses(InteractsWithMongoInbox::class);
@@ -12,7 +15,7 @@ uses(InteractsWithMongoInbox::class);
 beforeEach(function () {
     $this->setUpMongoInbox();
     $this->inbox = $this->app->make(InboxEventRepository::class);
-    $this->published = fakeMessengerSend();
+    $this->published = fakeNotificationQueue();
 });
 
 it('persists and publishes a new email event', function () {
@@ -110,6 +113,22 @@ it('publishes using the stored event id when the idempotency key matches', funct
     expect($this->published->messages)->toHaveCount(2);
     expect($this->published->messages[1]->eventId)->toBe('enq-original');
     expect($this->inbox->findByEventId('enq-other'))->toBeNull();
+});
+
+it('dispatches a laravel job when the queue driver is laravel', function () {
+    config(['notifications.queue_driver' => 'laravel']);
+    $this->app->forgetInstance(NotificationQueue::class);
+    Queue::fake();
+
+    $message = SendEmailMessage::fromArray([
+        'event_id' => 'enq-laravel',
+        'payload' => enqueuePayload(),
+    ]);
+
+    $event = app(NotificationEnqueueService::class)->enqueue($message);
+
+    expect($event->status)->toBe(InboxStatus::Received);
+    Queue::assertPushed(SendNotificationJob::class, fn (SendNotificationJob $job): bool => $job->eventId === 'enq-laravel');
 });
 
 /**

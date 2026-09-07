@@ -2,6 +2,7 @@
 
 use App\Messenger\MessengerFactory;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 
 it('requires an api key', function () {
     $this->postJson('/api/emails', [])->assertUnauthorized();
@@ -28,6 +29,14 @@ it('reports dependency checks in health', function () {
         ->assertJsonStructure(['status', 'checks' => ['app', 'mongodb', 'rabbitmq']]);
 });
 
+it('reports laravel queue checks instead of rabbitmq', function () {
+    config(['notifications.queue_driver' => 'laravel']);
+
+    $this->getJson('/api/health')
+        ->assertJsonStructure(['status', 'checks' => ['app', 'mongodb', 'queue']])
+        ->assertJsonMissingPath('checks.rabbitmq');
+});
+
 it('reports degraded health when dependencies fail', function () {
     DB::shouldReceive('connection')
         ->with('mongodb')
@@ -43,6 +52,28 @@ it('reports degraded health when dependencies fail', function () {
         ->assertJsonPath('checks.app', true)
         ->assertJsonPath('checks.mongodb', false)
         ->assertJsonPath('checks.rabbitmq', false);
+});
+
+it('reports degraded health when the laravel queue is down', function () {
+    config([
+        'notifications.queue_driver' => 'laravel',
+        'queue.default' => 'redis',
+    ]);
+
+    DB::shouldReceive('connection')
+        ->with('mongodb')
+        ->andThrow(new RuntimeException('mongo down'));
+
+    Queue::shouldReceive('connection')
+        ->with('redis')
+        ->andThrow(new RuntimeException('redis down'));
+
+    $this->getJson('/api/health')
+        ->assertStatus(503)
+        ->assertJsonPath('status', 'degraded')
+        ->assertJsonPath('checks.app', true)
+        ->assertJsonPath('checks.mongodb', false)
+        ->assertJsonPath('checks.queue', false);
 });
 
 it('rejects both template and content', function () {
