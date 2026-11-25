@@ -28,7 +28,7 @@ flowchart LR
   Dispatch --> Channel --> Provider
 ```
 
-`NOTIFICATION_QUEUE_DRIVER`: `rabbitmq` (default) o `laravel`. Infra local: MongoDB 7; RabbitMQ 3 solo si el driver es `rabbitmq` (`docker compose up -d`). La app PHP no corre en Compose.
+`NOTIFICATION_QUEUE_DRIVER`: `rabbitmq` (default) o `laravel`. Infra local (y opcionalmente la app): MongoDB 7, RabbitMQ 3 y PHP-FPM/nginx vía `docker compose` / `make up` (dev `:8003`, prod `:8083`). El entrypoint de la imagen arranca índices del inbox, `messenger:setup` y el worker (`messenger:consume email` o `queue:work`).
 
 ## HTTP (asíncrono)
 

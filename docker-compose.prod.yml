@@ -1,0 +1,85 @@
+services:
+
+  app:
+    image: notificaciones-app-prod
+    build:
+      context: .
+      dockerfile: build/prod/Dockerfile.prod
+    container_name: notificaciones-app-prod
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MESSENGER_TRANSPORT_DSN=amqp://guest:guest@rabbitmq:5672/%2f
+      - MESSENGER_FAILURE_DSN=amqp://guest:guest@rabbitmq:5672/%2f
+    volumes:
+      - notificaciones_html:/var/www/html
+      - notificaciones_storage:/var/www/html/storage
+      - notificaciones_cache:/var/www/html/bootstrap/cache
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - notificaciones_network_prod
+
+  nginx:
+    image: nginx:alpine
+    container_name: notificaciones-nginx-prod
+    depends_on:
+      - app
+    ports:
+      - "8083:80"
+    volumes:
+      - notificaciones_html:/var/www/html:ro
+      - notificaciones_storage:/var/www/html/storage:ro
+      - notificaciones_cache:/var/www/html/bootstrap/cache:ro
+      - ./build/prod/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - notificaciones_network_prod
+
+  mongodb:
+    image: mongo:7
+    container_name: notificaciones-mongodb-prod
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: notificaciones
+    volumes:
+      - mongo_data_prod:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - notificaciones_network_prod
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: notificaciones-rabbitmq-prod
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - notificaciones_network_prod
+
+networks:
+  notificaciones_network_prod:
+    driver: bridge
+
+volumes:
+  notificaciones_html:
+  notificaciones_storage:
+  notificaciones_cache:
+  mongo_data_prod:
