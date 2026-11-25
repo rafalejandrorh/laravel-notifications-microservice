@@ -15,23 +15,35 @@ El productor describe *qué* enviar. Este servicio decide *con qué proveedor* (
 
 ## Requisitos
 
-- PHP 8.3+ con `ext-mongodb`; `ext-amqp` y `ext-pcntl` si `NOTIFICATION_QUEUE_DRIVER=rabbitmq`
-- MongoDB (`docker compose up -d`); RabbitMQ solo en modo `rabbitmq`
+- Docker y Docker Compose (recomendado), o PHP 8.3+ con `ext-mongodb`; `ext-amqp` y `ext-pcntl` si `NOTIFICATION_QUEUE_DRIVER=rabbitmq`
+- MongoDB y RabbitMQ (incluidos en Compose)
+
+## Docker (recomendado)
+
+Stack: `app` (PHP-FPM 8.4) + `nginx` + `mongodb` + `rabbitmq`. El entrypoint ejecuta `inbox:ensure-indexes`, `messenger:setup` y el worker (`messenger:consume email` o `queue:work` según el driver).
 
 ```bash
 cp .env.example .env
-php artisan key:generate
-docker compose up -d
-php artisan inbox:ensure-indexes
+# Genera APP_KEY (una vez; si aún no hay contenedores: php artisan key:generate en el host)
+make up
+make key-generate   # si APP_KEY está vacío
 ```
+
+- API: http://localhost:8003
+- Health: `GET http://localhost:8003/api/health`
+- RabbitMQ UI (dev): http://localhost:15672 (`guest`/`guest`)
+- Producción: `make up-prod` → http://localhost:8083
+
+Compose sobreescribe `APP_URL`, `MONGODB_URI` y los DSN de Messenger hacia los hostnames internos. Ver `make help`.
 
 Cola: `NOTIFICATION_QUEUE_DRIVER=rabbitmq` (default) o `laravel`.
 
-**RabbitMQ** (pub/sub: API HTTP y mensajes AMQP):
+**RabbitMQ** (pub/sub: API HTTP y mensajes AMQP) — sin Docker, o para un worker extra:
 
 ```bash
 php artisan messenger:setup
 php artisan messenger:consume email --time-limit=3600
+# o: make messenger-setup && make messenger-consume
 ```
 
 **Laravel Queue** (solo API HTTP; no se consumen eventos de RabbitMQ):
@@ -39,6 +51,7 @@ php artisan messenger:consume email --time-limit=3600
 ```bash
 # QUEUE_CONNECTION=database o redis (no sync en producción)
 php artisan queue:work --queue=email.send
+# o: make queue-work
 # escala: más procesos/réplicas del mismo comando
 ```
 

@@ -1,0 +1,51 @@
+FROM php:8.4-fpm
+
+# Extensiones de sistema necesarias para PHP, Laravel, MongoDB y AMQP
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        zlib1g-dev \
+        g++ \
+        git \
+        libpng-dev \
+        libicu-dev \
+        libzip-dev \
+        libsqlite3-dev \
+        libssl-dev \
+        librabbitmq-dev \
+        pkg-config \
+        unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Extensiones de PHP
+RUN docker-php-ext-install \
+        intl \
+        opcache \
+        pdo \
+        pdo_sqlite \
+        zip \
+        bcmath \
+        gd \
+        pcntl
+
+# APCu, MongoDB y AMQP
+RUN pecl install apcu mongodb amqp \
+    && docker-php-ext-enable apcu mongodb amqp
+
+# Configuración de PHP y Opcache para desarrollo
+COPY build/dev/php-dev.ini /usr/local/etc/php/conf.d/php-dev.ini
+COPY build/dev/opcache-dev.ini /usr/local/etc/php/conf.d/opcache-dev.ini
+
+# Composer
+RUN curl -sS https://getcomposer.org/installer | php -- \
+    --install-dir=/usr/local/bin --filename=composer
+
+WORKDIR /var/www/html
+
+# Entrypoint de desarrollo: permisos, composer, indexes y worker
+COPY build/dev/entrypoint.dev.sh /usr/local/bin/entrypoint-dev.sh
+
+# Normalizar finales de línea por si el archivo viene con formato Windows (CRLF)
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint-dev.sh \
+    && chmod +x /usr/local/bin/entrypoint-dev.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-dev.sh"]
