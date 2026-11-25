@@ -15,26 +15,38 @@ El productor describe *qué* enviar. Este servicio decide *con qué proveedor* (
 
 ## Requisitos
 
-- PHP 8.3+ con `ext-mongodb`, `ext-amqp` y `ext-pcntl`
-- MongoDB y RabbitMQ (`docker compose up -d`)
+- PHP 8.3+ con `ext-mongodb`; `ext-amqp` y `ext-pcntl` si `NOTIFICATION_QUEUE_DRIVER=rabbitmq`
+- MongoDB (`docker compose up -d`); RabbitMQ solo en modo `rabbitmq`
 
 ```bash
 cp .env.example .env
 php artisan key:generate
 docker compose up -d
 php artisan inbox:ensure-indexes
-php artisan messenger:setup
 ```
 
-Worker de email:
+Cola: `NOTIFICATION_QUEUE_DRIVER=rabbitmq` (default) o `laravel`.
+
+**RabbitMQ** (pub/sub: API HTTP y mensajes AMQP):
 
 ```bash
+php artisan messenger:setup
 php artisan messenger:consume email --time-limit=3600
 ```
 
+**Laravel Queue** (solo API HTTP; no se consumen eventos de RabbitMQ):
+
+```bash
+# QUEUE_CONNECTION=database o redis (no sync en producción)
+php artisan queue:work --queue=email.send
+# escala: más procesos/réplicas del mismo comando
+```
+
+Cuando se activen canales: `--queue=push.send` y `--queue=sms.send` en procesos separados.
+
 ## RabbitMQ
 
-Exchange topic: `MESSENGER_EXCHANGE` (en `.env.example`: `notificaciones`). Si la variable no está, el fallback de `config/messenger.php` es `notifications`.
+Aplica cuando `NOTIFICATION_QUEUE_DRIVER=rabbitmq`. Exchange topic: `MESSENGER_EXCHANGE` (en `.env.example`: `notificaciones`). Si la variable no está, el fallback de `config/messenger.php` es `notifications`.
 
 | Canal | Routing key | Cola | Worker v1 |
 |-------|-------------|------|-----------|
@@ -146,11 +158,11 @@ Auth: header `X-API-Key`.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/api/emails` | Disparo email (mismo contrato). `202`. |
+| POST | `/api/emails` | Encola el email (mismo contrato). `202` con `status: received`. |
 | GET | `/api/notifications/{eventId}` | Estado (channel, status, provider resuelto). |
 | POST | `/api/emails/{eventId}/retry` | Reintento manual si `failed`. |
 | GET | `/api/templates?channel=email` | Catálogo por canal. |
-| GET | `/api/health` | App, MongoDB, RabbitMQ (sin API key). |
+| GET | `/api/health` | App, MongoDB y RabbitMQ o cola Laravel (sin API key). |
 
 No hay `POST /api/push` ni `POST /api/sms` en v1.
 
@@ -168,7 +180,7 @@ Estados: `received` → `processing` → `sent` | `failed` | `skipped_duplicate`
 
 ## Plantillas
 
-Vistas en `resources/views/notifications/email/{nombre}/v{n}.blade.php`. Catálogo: `config/notification_templates.php`.
+Vistas en `resources/views/notifications/email/{nombre}/v{n}.blade.php`, envueltas en `<x-mail::message>`. Tema Markdown `sivacrim` (`resources/views/vendor/mail/html/themes/sivacrim.css`): layout Laravel con texto centrado, como los correos originales de SIVACRIM. Catálogo: `config/notification_templates.php`. Plantillas SIVACRIM: `config/sivacrim_notification_templates.php` (se fusionan en el catálogo email). Partials de SIVACRIM versionados en `resources/views/notifications/email/sivacrim-partials/{header|footer}/v{n}.blade.php`. Los logos de SIVACRIM se incrustan como CID (`resources/images/sivacrim/`), no como URL del productor.
 
 ## Proveedores de email
 

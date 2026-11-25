@@ -56,6 +56,16 @@ abstract readonly class NotificationMessage
         );
     }
 
+    public static function fromInboxEvent(InboxEvent $event): NotificationMessage
+    {
+        return match ($event->channel) {
+            NotificationChannel::Email => SendEmailMessage::fromInbox($event),
+            NotificationChannel::Push => SendPushMessage::fromInbox($event),
+            NotificationChannel::Sms => SendSmsMessage::fromInbox($event),
+            null => throw new PermanentNotificationException('El evento de inbox no tiene canal.'),
+        };
+    }
+
     /**
      * @return array<string, mixed>
      */

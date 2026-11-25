@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\QueueDriver;
 use App\Messenger\MessengerFactory;
 use Illuminate\Console\Command;
 use Symfony\Component\Messenger\Worker;
@@ -18,6 +19,12 @@ class MessengerConsumeCommand extends Command
 
     public function handle(MessengerFactory $messenger): int
     {
+        if (! QueueDriver::current()->isRabbitMq()) {
+            $this->error('Pub/sub AMQP desactivado (NOTIFICATION_QUEUE_DRIVER no es rabbitmq).');
+
+            return self::FAILURE;
+        }
+
         $transport = (string) $this->argument('transport');
         $config = config("messenger.transports.{$transport}");
 

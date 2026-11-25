@@ -2,6 +2,7 @@
 
 use App\Enums\NotificationChannel;
 use App\Exceptions\PermanentNotificationException;
+use App\Message\NotificationMessage;
 use App\Message\SendEmailMessage;
 use App\Message\SendPushMessage;
 use App\Message\SendSmsMessage;
@@ -21,6 +22,7 @@ it('rebuilds a message from an inbox event', function () {
     $event = new InboxEvent([
         'event_id' => 'evt-1',
         'event_type' => 'email.send.requested',
+        'channel' => NotificationChannel::Email,
         'occurred_at' => '2026-01-15T12:00:00+00:00',
         'idempotency_key' => 'key-1',
         'payload' => ['to' => [['email' => 'user@example.com']]],
@@ -34,6 +36,28 @@ it('rebuilds a message from an inbox event', function () {
     expect($message->idempotencyKey)->toBe('key-1');
     expect($message->payload)->toBe(['to' => [['email' => 'user@example.com']]]);
 });
+
+it('rebuilds the channel message from an inbox event', function (NotificationChannel $channel, string $class) {
+    $event = new InboxEvent([
+        'event_id' => 'evt-channel',
+        'event_type' => $channel->eventType(),
+        'channel' => $channel,
+        'payload' => [],
+    ]);
+
+    expect(NotificationMessage::fromInboxEvent($event))->toBeInstanceOf($class);
+})->with([
+    [NotificationChannel::Email, SendEmailMessage::class],
+    [NotificationChannel::Push, SendPushMessage::class],
+    [NotificationChannel::Sms, SendSmsMessage::class],
+]);
+
+it('rejects inbox events without a channel', function () {
+    NotificationMessage::fromInboxEvent(new InboxEvent([
+        'event_id' => 'evt-no-channel',
+        'event_type' => 'email.send.requested',
+    ]));
+})->throws(PermanentNotificationException::class, 'El evento de inbox no tiene canal.');
 
 it('defaults payload and occurred at when the inbox event omits them', function () {
     $message = SendEmailMessage::fromInbox(new InboxEvent([

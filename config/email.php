@@ -26,4 +26,9 @@ return [
         'delegated_user' => env('GMAIL_DELEGATED_USER'),
     ],
 
+    'inline_images' => [
+        'logo_cicpc.png' => resource_path('images/sivacrim/logo_cicpc.png'),
+        'logo_experticias_telecomunicaciones.png' => resource_path('images/sivacrim/logo_experticias_telecomunicaciones.png'),
+    ],
+
 ];
