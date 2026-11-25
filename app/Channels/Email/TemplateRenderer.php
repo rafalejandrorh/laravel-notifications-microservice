@@ -3,6 +3,7 @@
 namespace App\Channels\Email;
 
 use App\Exceptions\PermanentNotificationException;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\View;
 
 class TemplateRenderer
@@ -28,7 +29,7 @@ class TemplateRenderer
             throw new PermanentNotificationException("No existe la vista de plantilla [{$view}].");
         }
 
-        $html = View::make($view, $params)->render();
+        $html = app(Markdown::class)->render($view, $params)->toHtml();
         $textFile = resource_path('views/'.str_replace('.', '/', $view).'.text.blade.php');
         $text = is_file($textFile)
             ? View::file($textFile, $params)->render()

@@ -1,6 +1,8 @@
 <?php
 
 use App\Channels\Email\RenderedEmail;
+use App\Contracts\NotificationQueue;
+use App\Message\NotificationMessage;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class)
@@ -20,5 +22,23 @@ function makeRenderedEmail(array $overrides = []): RenderedEmail
         subject: $overrides['subject'] ?? 'Hola',
         html: array_key_exists('html', $overrides) ? $overrides['html'] : '<p>Cuerpo</p>',
         text: array_key_exists('text', $overrides) ? $overrides['text'] : 'Cuerpo',
+        inlineImages: $overrides['inlineImages'] ?? [],
     );
+}
+
+/**
+ * @return object{messages: list<NotificationMessage>}
+ */
+function fakeNotificationQueue(): object
+{
+    $published = (object) ['messages' => []];
+
+    $queue = Mockery::mock(NotificationQueue::class);
+    $queue->shouldReceive('publish')->andReturnUsing(function ($message) use ($published): void {
+        $published->messages[] = $message;
+    });
+
+    app()->instance(NotificationQueue::class, $queue);
+
+    return $published;
 }

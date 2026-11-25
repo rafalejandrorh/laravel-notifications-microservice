@@ -26,7 +26,8 @@ it('renders welcome template and uses latest when version is omitted', function 
     expect($rendered->templateName)->toBe('welcome');
     expect($rendered->templateVersion)->toBe(1);
     expect($rendered->content['subject'])->toBe('Bienvenido, Juan');
-    expect($rendered->content['html'])->toContain('Juan');
+    expect($rendered->content['html'])->toContain('Juan')
+        ->and($rendered->content['html'])->toContain('inner-body');
 });
 
 it('renders raw content without blade', function () {
@@ -50,6 +51,67 @@ it('rejects template and content together', function () {
         'content' => ['subject' => 'X', 'text' => 'Y'],
     ]));
 })->throws(PermanentNotificationException::class);
+
+it('renders sivacrim login code template', function () {
+    $rendered = $this->resolver->resolve(emailInboxEvent([
+        'to' => [['email' => 'user@example.com']],
+        'template' => [
+            'name' => 'sivacrim-login-code',
+            'params' => [
+                'primer_nombre' => 'Ana',
+                'code' => 'ABC123',
+                'institution_name' => 'CICPC',
+            ],
+        ],
+    ]));
+
+    expect($rendered->templateName)->toBe('sivacrim-login-code')
+        ->and($rendered->fromIdentity)->toBe('notificaciones')
+        ->and($rendered->content['subject'])->toBe('Validacion de Inicio de Sesión | SIVACRIM')
+        ->and($rendered->content['html'])->toContain('Ana')
+        ->and($rendered->content['html'])->toContain('ABC123')
+        ->and($rendered->content['html'])->toContain('inner-body')
+        ->and($rendered->content['html'])->toContain('cid:logo_cicpc.png')
+        ->and($rendered->content['html'])->toContain('text-align: center')
+        ->and($rendered->content['text'])->toContain('ABC123');
+});
+
+it('renders sivacrim email validation template', function () {
+    $rendered = $this->resolver->resolve(emailInboxEvent([
+        'to' => [['email' => 'user@example.com']],
+        'template' => [
+            'name' => 'sivacrim-email-validation',
+            'params' => ['code' => 'XYZ789'],
+        ],
+    ]));
+
+    expect($rendered->templateName)->toBe('sivacrim-email-validation')
+        ->and($rendered->content['subject'])->toBe('Validacion de Correo | SIVACRIM')
+        ->and($rendered->content['html'])->toContain('XYZ789')
+        ->and($rendered->content['html'])->toContain('No archive ni elimine este correo');
+});
+
+it('renders sivacrim password reset template', function () {
+    $rendered = $this->resolver->resolve(emailInboxEvent([
+        'to' => [['email' => 'user@example.com']],
+        'template' => [
+            'name' => 'sivacrim-password-reset',
+            'params' => [
+                'reset_url' => 'https://sivacrim.test/password/reset/token',
+                'expire_minutes' => '60',
+            ],
+        ],
+    ]));
+
+    expect($rendered->templateName)->toBe('sivacrim-password-reset')
+        ->and($rendered->content['subject'])->toBe('Solicitud de Reestablecimiento de Contraseña')
+        ->and($rendered->content['html'])->toContain('https://sivacrim.test/password/reset/token')
+        ->and($rendered->content['html'])->toContain('button-primary')
+        ->and($rendered->content['html'])->toContain('60')
+        ->and($rendered->content['html'])->toContain('cid:logo_cicpc.png')
+        ->and($rendered->content['html'])->toContain('text-align: center')
+        ->and($rendered->content['text'])->toContain('Cambiar contraseña');
+});
 
 it('rejects missing required params', function () {
     $this->resolver->resolve(emailInboxEvent([

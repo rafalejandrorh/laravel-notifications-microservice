@@ -2,7 +2,9 @@
 
 namespace App\MessageHandler;
 
+use App\Exceptions\TransientNotificationException;
 use App\Message\SendSmsMessage;
+use App\Messenger\RecoverableNotificationException;
 use App\Services\NotificationDispatchService;
 
 class SendSmsMessageHandler
@@ -13,6 +15,10 @@ class SendSmsMessageHandler
 
     public function __invoke(SendSmsMessage $message): void
     {
-        $this->dispatcher->dispatch($message);
+        try {
+            $this->dispatcher->dispatch($message);
+        } catch (TransientNotificationException $exception) {
+            throw new RecoverableNotificationException($exception->getMessage(), (int) $exception->getCode(), $exception);
+        }
     }
 }

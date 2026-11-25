@@ -5,24 +5,24 @@ namespace App\Http\Controllers;
 use App\Enums\InboxStatus;
 use App\Enums\NotificationChannel;
 use App\Http\Requests\StoreEmailRequest;
+use App\Message\NotificationMessage;
 use App\Message\SendEmailMessage;
 use App\Models\InboxEvent;
 use App\Repositories\InboxEventRepository;
-use App\Services\NotificationDispatchService;
+use App\Services\NotificationEnqueueService;
 use Illuminate\Http\JsonResponse;
+use Throwable;
 
 class EmailController extends Controller
 {
     public function __construct(
-        private NotificationDispatchService $dispatcher,
+        private NotificationEnqueueService $enqueuer,
         private InboxEventRepository $inbox,
     ) {}
 
     public function store(StoreEmailRequest $request): JsonResponse
     {
-        $event = $this->dispatcher->dispatch($request->toMessage());
-
-        return response()->json($this->present($event), 202);
+        return $this->enqueueAccepted($request->toMessage());
     }
 
     public function retry(string $eventId): JsonResponse
@@ -42,7 +42,19 @@ class EmailController extends Controller
         }
 
         $event = $this->inbox->prepareManualRetry($event);
-        $event = $this->dispatcher->dispatch(SendEmailMessage::fromInbox($event));
+
+        return $this->enqueueAccepted(SendEmailMessage::fromInbox($event));
+    }
+
+    private function enqueueAccepted(NotificationMessage $message): JsonResponse
+    {
+        try {
+            $event = $this->enqueuer->enqueue($message);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json(['message' => 'No se pudo encolar el evento.'], 503);
+        }
 
         return response()->json($this->present($event), 202);
     }
